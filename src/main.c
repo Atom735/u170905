@@ -1,12 +1,13 @@
-#include <WinDef.h>
-
-#include "log.h"
-
+#define WIN32_LEAN_AND_MEAN
+#define _WIN32_WINNT _WIN32_WINNT_WINXP
 #include <Windows.h>
 
 #include <GL/gl.h>
 #include <GL/glext.h>
 #include <GL/wglext.h>
+
+#include "log.h"
+#include "sm.h"
 
 // глобальная перменная для хранения ошибки OpenGL
 GLenum g_OpenGLError;
@@ -35,9 +36,10 @@ BOOL            g_bAnimating    = TRUE;
 INT             g_nWidth        = 640;
 INT             g_nHeight       = 480;
 
+SM              g_sm;
+
 // определим указатель на функцию создания расширенного контекста OpenGL
 PFNWGLCREATECONTEXTATTRIBSARBPROC wglCreateContextAttribsARB = NULL;
-
 
 // обработчик сообщений окна
 LRESULT CALLBACK rWindowProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam);
@@ -45,9 +47,9 @@ LRESULT CALLBACK rWindowProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 INT main(INT argc, LPSTR argv[]) {
     LOG_rStart();
     LOG_rSetLvl(LOG_V);
+    SM_rStart();
     g_uLogApp = LOG_rNewCategory(TEXT("App"));
     g_uLogOGL = LOG_rNewCategory(TEXT("OpenGL"));
-
     g_hInstance = (HINSTANCE)GetModuleHandle(NULL);
 
     { // Регестрируем класс основного окна и создаём его
@@ -161,11 +163,11 @@ INT main(INT argc, LPSTR argv[]) {
         glGetIntegerv(GL_MAJOR_VERSION, &major);
         glGetIntegerv(GL_MINOR_VERSION, &minor);
         LOG(g_uLogOGL, LOG_I, TEXT("OpenGL render context information:\n"
-            "  Renderer       : %s\n"
-            "  Vendor         : %s\n"
-            "  Version        : %s\n"
-            "  GLSL version   : %s\n"
-            "  OpenGL version : %d.%d\n"),
+            "  Renderer       : %hs\n"
+            "  Vendor         : %hs\n"
+            "  Version        : %hs\n"
+            "  GLSL version   : %hs\n"
+            "  OpenGL version : %d.%d"),
             (LPCSTR)glGetString(GL_RENDERER),
             (LPCSTR)glGetString(GL_VENDOR),
             (LPCSTR)glGetString(GL_VERSION),

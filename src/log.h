@@ -5,6 +5,10 @@
 #include <Assert.h>
 #define ASSERT(x) assert(x)
 
+#define LOG_MAX_CATEGORIES       32
+#define LOG_MAX_MESAGELEN        4096
+#define LOG_MESAGETAB            8
+
 enum {
     LOG_V = 0,
     LOG_D,

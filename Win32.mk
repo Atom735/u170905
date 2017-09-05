@@ -18,7 +18,8 @@ DIR_LIBS :=
 
 SRC_FILES := \
 	src/main.c \
-	src/log.c
+	src/log.c \
+	src/sm.c
 
 OBJECTS := $(addprefix obj/, $(addsuffix .o, $(basename $(SRC_FILES))))
 OBJECTS_DIRS := $(sort $(dir $(OBJECTS)))

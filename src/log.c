@@ -1,14 +1,14 @@
-#include "log.h"
-
+#define WIN32_LEAN_AND_MEAN
+#define _WIN32_WINNT _WIN32_WINNT_WINXP
 #include <Windows.h>
 
 #include <stdio.h>
 #include <stdarg.h>
 #include <tchar.h>
 
-#define LOG_MAX_CATEGORIES       32
-#define LOG_MAX_MESAGELEN        4096
-#define LOG_MESAGETAB            8
+#include "log.h"
+
+
 
 BOOL    LOG_bRun                 = FALSE;
 HANDLE  LOG_hFile                = INVALID_HANDLE_VALUE;
