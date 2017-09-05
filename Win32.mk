@@ -7,7 +7,7 @@ OUT_NAME := a.exe
 
 CPPFLAGS := -DDEBUG -D_DEBUG -DUNICODE -D_UNICODE
 CFLAGS := -O0 -g3 -Wall -std=c99
-LDFLAGS :=
+LDFLAGS := -lOpenGL32 -lGDI32
 
 DIR_INCLUDES := \
 	src \

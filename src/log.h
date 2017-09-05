@@ -2,6 +2,8 @@
 #define _H_LOG
 
 #include <WinDef.h>
+#include <Assert.h>
+#define ASSERT(x) assert(x)
 
 enum {
     LOG_V = 0,
