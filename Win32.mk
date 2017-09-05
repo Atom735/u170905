@@ -5,7 +5,7 @@ AR := $(TOOL_AR)
 
 OUT_NAME := a.exe
 
-CPPFLAGS := -D_DEBUG -D_UNICODE
+CPPFLAGS := -DDEBUG -D_DEBUG -DUNICODE -D_UNICODE
 CFLAGS := -O0 -g3 -Wall -std=c99
 LDFLAGS :=
 
@@ -17,7 +17,8 @@ DIR_LIBS :=
     # libs
 
 SRC_FILES := \
-	src/main.c
+	src/main.c \
+	src/log.c
 
 OBJECTS := $(addprefix obj/, $(addsuffix .o, $(basename $(SRC_FILES))))
 OBJECTS_DIRS := $(sort $(dir $(OBJECTS)))
