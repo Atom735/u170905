@@ -258,7 +258,9 @@ INT     rAppICreateWindow(LPSM lpsm, UINT uMsg, LPVOID ptr) {
     return 0;
 }
 INT     rAppIIdle(LPSM lpsm, UINT uMsg, LPVOID ptr) {
-    rWndProcPaint(g_hWnd);
+    if(uMsg == SM_MSG_PUSH) {
+    } else if(uMsg == SM_MSG_POP) {
+    } else rWndProcPaint(g_hWnd);
     return 0;
 }
 
