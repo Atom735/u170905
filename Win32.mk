@@ -20,7 +20,7 @@ SRC_FILES := \
 	src/main.c
 
 OBJECTS := $(addprefix obj/, $(addsuffix .o, $(basename $(SRC_FILES))))
-OBJECTS_DIRS := $(sort $(dir $(OBJECTS) ))
+OBJECTS_DIRS := $(sort $(dir $(OBJECTS)))
 
 CFLAGS  += $(addprefix -I, $(DIR_INCLUDES))
 LDFLAGS += $(addprefix -L, $(DIR_LIBS))
