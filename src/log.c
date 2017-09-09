@@ -8,7 +8,8 @@
 
 #include "log.h"
 
-
+UINT             g_uLogApp = 0;
+UINT             g_uLogOGL = 0;
 
 BOOL    LOG_bRun                 = FALSE;
 HANDLE  LOG_hFile                = INVALID_HANDLE_VALUE;
@@ -18,11 +19,16 @@ UINT    LOG_uLvl                 = LOG_I;
 TCHAR   LOG_bufOut[LOG_MAX_MESAGELEN];
 UINT    LOG_bufOutSz             = 0;
 
+
 VOID    LOG_rStart() {
     LOG_hFile = LOG_rOtherStart(TEXT("LOG.txt"));
     LOG_bRun = (LOG_hFile != INVALID_HANDLE_VALUE);
     LOG_alpctszCategories[0] = TEXT("NULL");
     LOG_abCategories[0] = FALSE;
+
+    g_uLogApp = LOG_rNewCategory(TEXT("App"));
+    g_uLogOGL = LOG_rNewCategory(TEXT("OpenGL"));
+
     LOG(0, LOG_INFO, TEXT("Log start"));
 }
 VOID    LOG_rFin() {

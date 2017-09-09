@@ -2,68 +2,15 @@
 #define _WIN32_WINNT _WIN32_WINNT_WINXP
 #include <Windows.h>
 
-#include <GL/gl.h>
-#include <GL/glext.h>
-#include <GL/wglext.h>
+#include <stdlib.h>
 
 #include "log.h"
 #include "sm.h"
-
-// глобальная перменная для хранения ошибки OpenGL
-GLenum g_OpenGLError;
-
-// получть адрес функции из драйвера
-#define OPENGL_GET_PROC(p,n) \
-    if (!(n = (p)wglGetProcAddress(#n))) { LOG(g_uLogOGL, LOG_E, TEXT("Loading extension '%s' fail (%d)"), #n, GetLastError()); return -1;  }
-// проверка на ошибки OpenGL
-#define OPENGL_CHECK_FOR_ERRORS() \
-    if((g_OpenGLError = glGetError()) != GL_NO_ERROR) LOG(g_uLogOGL, LOG_E, TEXT("Error %d(0x%x)"), (INT)g_OpenGLError, (INT)g_OpenGLError);
-// безопасный вызов функции OpenGL
-#define OPENGL_CALL(exp) \
-    { exp; if((g_OpenGLError = glGetError()) != GL_NO_ERROR) LOG(g_uLogOGL, LOG_E, TEXT("expression \"" #exp "\" Error %d(0x%x)"), (INT)g_OpenGLError, (INT)g_OpenGLError); }
-
-// объявим расширения OpenGL
-// VAO
-PFNGLGENVERTEXARRAYSPROC            glGenVertexArrays           = NULL;
-PFNGLDELETEVERTEXARRAYSPROC         glDeleteVertexArrays        = NULL;
-PFNGLBINDVERTEXARRAYPROC            glBindVertexArray           = NULL;
-// VBO
-PFNGLGENBUFFERSPROC                 glGenBuffers                = NULL;
-PFNGLDELETEBUFFERSPROC              glDeleteBuffers             = NULL;
-PFNGLBINDBUFFERPROC                 glBindBuffer                = NULL;
-PFNGLBUFFERDATAPROC                 glBufferData                = NULL;
-PFNGLBUFFERSUBDATAPROC              glBufferSubData             = NULL;
-// Shaders
-PFNGLCREATEPROGRAMPROC              glCreateProgram             = NULL;
-PFNGLDELETEPROGRAMPROC              glDeleteProgram             = NULL;
-PFNGLLINKPROGRAMPROC                glLinkProgram               = NULL;
-PFNGLVALIDATEPROGRAMPROC            glValidateProgram           = NULL;
-PFNGLUSEPROGRAMPROC                 glUseProgram                = NULL;
-PFNGLGETPROGRAMIVPROC               glGetProgramiv              = NULL;
-PFNGLGETPROGRAMINFOLOGPROC          glGetProgramInfoLog         = NULL;
-PFNGLCREATESHADERPROC               glCreateShader              = NULL;
-PFNGLDELETESHADERPROC               glDeleteShader              = NULL;
-PFNGLSHADERSOURCEPROC               glShaderSource              = NULL;
-PFNGLCOMPILESHADERPROC              glCompileShader             = NULL;
-PFNGLATTACHSHADERPROC               glAttachShader              = NULL;
-PFNGLDETACHSHADERPROC               glDetachShader              = NULL;
-PFNGLGETSHADERIVPROC                glGetShaderiv               = NULL;
-PFNGLGETSHADERINFOLOGPROC           glGetShaderInfoLog          = NULL;
-// Shaders attributes
-PFNGLGETATTRIBLOCATIONPROC          glGetAttribLocation         = NULL;
-PFNGLVERTEXATTRIBPOINTERPROC        glVertexAttribPointer       = NULL;
-PFNGLENABLEVERTEXATTRIBARRAYPROC    glEnableVertexAttribArray   = NULL;
-PFNGLDISABLEVERTEXATTRIBARRAYPROC   glDisableVertexAttribArray  = NULL;
-// Shaders uniforms
-PFNGLGETUNIFORMLOCATIONPROC         glGetUniformLocation        = NULL;
-PFNGLUNIFORMMATRIX4FVPROC           glUniformMatrix4fv          = NULL;
-// определим указатель на функцию создания расширенного контекста OpenGL
-PFNWGLCREATECONTEXTATTRIBSARBPROC   wglCreateContextAttribsARB  = NULL;
+#include "gl.h"
+#include "utilities.h"
 
 
 CONST LPCTSTR   g_clpszClassName = TEXT("A735 Core Window Class");
-UINT            g_uLogOGL       = 0;
-UINT            g_uLogApp       = 0;
 
 HINSTANCE       g_hInstance     = NULL;
 HWND            g_hWnd          = NULL;
@@ -76,7 +23,15 @@ BOOL            g_bAnimating    = TRUE;
 INT             g_nWidth        = 640;
 INT             g_nHeight       = 480;
 
+LARGE_INTEGER   g_liQPF;
+LARGE_INTEGER   g_liQPC;
+LARGE_INTEGER   g_liQPC_old;
+UINT            g_uLastFrame;
+FLOAT           g_fLastFrame;
+FLOAT           g_f1QPF;
+
 SM              g_smAppState;
+SM              g_smOglState;
 
 
 // обработчик сообщений окна
@@ -94,6 +49,8 @@ INT     rWndProcCreate(HWND hWnd);
 INT     rWndProcDestroy(HWND hWnd);
 INT     rWndProcSize(HWND hWnd);
 INT     rWndProcPaint(HWND hWnd);
+
+INT     rSOpenGLStart(LPSM lpsm, UINT uMsg, LPVOID ptr);
 
 INT main(INT argc, LPSTR argv[]) {
     INT o = rAppInit();
@@ -154,15 +111,16 @@ LRESULT CALLBACK rWndProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
 
 
 INT     rAppInit() {
+    QueryPerformanceFrequency(&g_liQPF); // 3579545
+    QueryPerformanceCounter(&g_liQPC_old);
     LOG_rStart();
     LOG_rSetLvl(LOG_V);
     SM_rStart();
 
     INT o;
 
-    g_uLogApp = LOG_rNewCategory(TEXT("App"));
-    g_uLogOGL = LOG_rNewCategory(TEXT("OpenGL"));
     g_hInstance = (HINSTANCE)GetModuleHandle(NULL);
+
 
     o = SM_rPush(&g_smAppState, rAppIRegisterClass, NULL);
     if(o) return o;
@@ -170,6 +128,23 @@ INT     rAppInit() {
     if(o) return o;
     o = SM_rPush(&g_smAppState, rAppIIdle, NULL);
     if(o) return o;
+
+    if((o = SM_rPush(&g_smOglState, rSOpenGLStart, NULL))) {
+        SM_rPop(&g_smOglState, NULL);
+        return o;
+    }
+
+    QueryPerformanceCounter(&g_liQPC);
+
+    g_liQPC.QuadPart -= g_liQPC_old.QuadPart;
+
+    LOG(g_uLogApp, LOG_I, TEXT("QueryPerformance\n\tQPF=%lld\n\tInit: %lld"), g_liQPF.QuadPart, g_liQPC.QuadPart);
+
+    g_liQPC.QuadPart *= 1000LL;
+    g_liQPC.QuadPart /= g_liQPF.QuadPart;
+    g_f1QPF = 1.f/(FLOAT)g_liQPF.LowPart;
+
+    LOG(g_uLogApp, LOG_I, TEXT("needed Time to Init app: %lldms"), g_liQPC.QuadPart);
 
     return 0;
 }
@@ -194,7 +169,7 @@ INT     rAppLoop() {
         }
 
         if(g_bRun && g_bActive) g_bRun = !SM_rProcess(&g_smAppState, 0, NULL);
-        Sleep(1);
+
     }
     return msg.wParam;
 }
@@ -260,28 +235,53 @@ INT     rAppICreateWindow(LPSM lpsm, UINT uMsg, LPVOID ptr) {
 INT     rAppIIdle(LPSM lpsm, UINT uMsg, LPVOID ptr) {
     if(uMsg == SM_MSG_PUSH) {
     } else if(uMsg == SM_MSG_POP) {
-    } else rWndProcPaint(g_hWnd);
+    } else {
+        rWndProcPaint(g_hWnd);
+        Sleep(1);
+    }
     return 0;
 }
 
 INT     rWndProcCreate(HWND hWnd) {
     PIXELFORMATDESCRIPTOR pfd;
     INT iFormat;
-    HGLRC hRCTemp;
-    // укажем атрибуты для создания расширенного контекста OpenGL
-    INT attribs[] = {
-        WGL_CONTEXT_MAJOR_VERSION_ARB, 3,
-        WGL_CONTEXT_MINOR_VERSION_ARB, 3,
-        WGL_CONTEXT_FLAGS_ARB,         WGL_CONTEXT_FORWARD_COMPATIBLE_BIT_ARB,
-        WGL_CONTEXT_PROFILE_MASK_ARB,  WGL_CONTEXT_CORE_PROFILE_BIT_ARB,
-        0
-    };
+
     // получим дескриптор контекста окна
     g_hDC = GetDC(hWnd);
     if(!g_hDC) {
         LOG(g_uLogApp, LOG_F, TEXT("GetDC FAIL!\n\terr=%p"), GetLastError());
         return -1;
     }
+
+    INT iFormatMax = DescribePixelFormat(g_hDC, 1, sizeof(pfd), &pfd);
+    LOG(g_uLogApp, LOG_I, TEXT("PFD Count = %d"), iFormatMax);
+    for(iFormat = 1; iFormat <= iFormatMax; ++iFormat) {
+        iFormatMax = DescribePixelFormat(g_hDC, iFormat, sizeof(pfd), &pfd);
+
+        LOG(g_uLogApp, LOG_I, TEXT("PFD  [%d/%d]\n"
+            "  nSize =         %d/%d\n"
+            "  nVersion =      %d\n"
+            "  cColorBits =    %d R%d G%d B%d A%d\n"
+            "  cAccumBits =    %d R%d G%d B%d A%d\n"
+            "  cDepthBits =    %d\n"
+            "  cStencilBits =  %d\n"
+            "  cAuxBuffers =   %d\n"
+            "  dwVisibleMask = %p\n"
+            "  shifts =        R%d G%d B%d A%d%hs"),
+            iFormat, iFormatMax,
+            pfd.nSize, sizeof(pfd),
+            pfd.nVersion,
+            pfd.cColorBits, pfd.cRedBits, pfd.cGreenBits, pfd.cBlueBits, pfd.cAlphaBits,
+            pfd.cAccumBits, pfd.cAccumRedBits, pfd.cAccumGreenBits, pfd.cAccumBlueBits, pfd.cAccumAlphaBits,
+            pfd.cDepthBits,
+            pfd.cStencilBits,
+            pfd.cAuxBuffers,
+            pfd.dwVisibleMask,
+            pfd.cRedShift, pfd.cGreenShift, pfd.cBlueShift, pfd.cAlphaShift,
+            GL_INFOSPIXELFLAGS(pfd.dwFlags));
+    }
+
+
     // описание формата пикселей
     memset(&pfd, 0, sizeof(pfd));
     pfd.nSize      = sizeof(pfd);
@@ -298,91 +298,26 @@ INT     rWndProcCreate(HWND hWnd) {
         return -1;
     }
 
-    // создадим временный контекст рендеринга он нужен для получения функции wglCreateContextAttribsARB
-    hRCTemp = wglCreateContext(g_hDC);
-    if (!hRCTemp || !wglMakeCurrent(g_hDC, hRCTemp)){
-        LOG(g_uLogApp, LOG_F, TEXT("Сreating temp render context FAIL!\n\terr=%p"), GetLastError());
-        return -1;
-    }
-
-    // получим адрес функции установки атрибутов контекста рендеринга
-    wglCreateContextAttribsARB = (PFNWGLCREATECONTEXTATTRIBSARBPROC)(wglGetProcAddress("wglCreateContextAttribsARB"));
-
-    // временный контекст OpenGL нам больше не нужен
-    wglMakeCurrent(NULL, NULL);
-    wglDeleteContext(hRCTemp);
-
-    if(!wglCreateContextAttribsARB) {
-        LOG(g_uLogApp, LOG_F, TEXT("wglCreateContextAttribsARB FAIL!\n\terr=%p"), GetLastError());
-        return -1;
-    }
-
-    // создадим расширенный контекст с поддержкой OpenGL 3
-    g_hRC = wglCreateContextAttribsARB(g_hDC, 0, attribs);
-    if (!g_hRC || !wglMakeCurrent(g_hDC, g_hRC)) {
-        LOG(g_uLogApp, LOG_F, TEXT("Creating render context FAIL!\n\terr=%p"), GetLastError());
-        return -1;
-    }
-
-    // выведем в лог немного информации о контексте OpenGL
-    int major, minor;
-    glGetIntegerv(GL_MAJOR_VERSION, &major);
-    glGetIntegerv(GL_MINOR_VERSION, &minor);
-    LOG(g_uLogOGL, LOG_I, TEXT("OpenGL render context information:\n"
-        "  Renderer       : %hs\n"
-        "  Vendor         : %hs\n"
-        "  Version        : %hs\n"
-        "  GLSL version   : %hs\n"
-        "  OpenGL version : %d.%d"),
-        (LPCSTR)glGetString(GL_RENDERER),
-        (LPCSTR)glGetString(GL_VENDOR),
-        (LPCSTR)glGetString(GL_VERSION),
-        (LPCSTR)glGetString(GL_SHADING_LANGUAGE_VERSION),
-        major, minor);
-
     // покажем окно на экране
     // SetForegroundWindow(hWnd);
     // SetFocus(hWnd);
     // UpdateWindow(hWnd);
 
-    // VAO
-    OPENGL_GET_PROC(PFNGLGENVERTEXARRAYSPROC,           glGenVertexArrays);
-    OPENGL_GET_PROC(PFNGLDELETEVERTEXARRAYSPROC,        glDeleteVertexArrays);
-    OPENGL_GET_PROC(PFNGLBINDVERTEXARRAYPROC,           glBindVertexArray);
-    // VBO
-    OPENGL_GET_PROC(PFNGLGENBUFFERSPROC,                glGenBuffers);
-    OPENGL_GET_PROC(PFNGLDELETEBUFFERSPROC,             glDeleteBuffers);
-    OPENGL_GET_PROC(PFNGLBINDBUFFERPROC,                glBindBuffer);
-    OPENGL_GET_PROC(PFNGLBUFFERDATAPROC,                glBufferData);
-    OPENGL_GET_PROC(PFNGLBUFFERSUBDATAPROC,             glBufferSubData);
-    // Shaders
-    OPENGL_GET_PROC(PFNGLCREATEPROGRAMPROC,             glCreateProgram);
-    OPENGL_GET_PROC(PFNGLDELETEPROGRAMPROC,             glDeleteProgram);
-    OPENGL_GET_PROC(PFNGLLINKPROGRAMPROC,               glLinkProgram);
-    OPENGL_GET_PROC(PFNGLVALIDATEPROGRAMPROC,           glValidateProgram);
-    OPENGL_GET_PROC(PFNGLUSEPROGRAMPROC,                glUseProgram);
-    OPENGL_GET_PROC(PFNGLGETPROGRAMIVPROC,              glGetProgramiv);
-    OPENGL_GET_PROC(PFNGLGETPROGRAMINFOLOGPROC,         glGetProgramInfoLog);
-    OPENGL_GET_PROC(PFNGLCREATESHADERPROC,              glCreateShader);
-    OPENGL_GET_PROC(PFNGLDELETESHADERPROC,              glDeleteShader);
-    OPENGL_GET_PROC(PFNGLSHADERSOURCEPROC,              glShaderSource);
-    OPENGL_GET_PROC(PFNGLCOMPILESHADERPROC,             glCompileShader);
-    OPENGL_GET_PROC(PFNGLATTACHSHADERPROC,              glAttachShader);
-    OPENGL_GET_PROC(PFNGLDETACHSHADERPROC,              glDetachShader);
-    OPENGL_GET_PROC(PFNGLGETSHADERIVPROC,               glGetShaderiv);
-    OPENGL_GET_PROC(PFNGLGETSHADERINFOLOGPROC,          glGetShaderInfoLog);
-    // Shaders attributes
-    OPENGL_GET_PROC(PFNGLGETATTRIBLOCATIONPROC,         glGetAttribLocation);
-    OPENGL_GET_PROC(PFNGLVERTEXATTRIBPOINTERPROC,       glVertexAttribPointer);
-    OPENGL_GET_PROC(PFNGLENABLEVERTEXATTRIBARRAYPROC,   glEnableVertexAttribArray);
-    OPENGL_GET_PROC(PFNGLDISABLEVERTEXATTRIBARRAYPROC,  glDisableVertexAttribArray);
-    // Shaders uniforms
-    OPENGL_GET_PROC(PFNGLGETUNIFORMLOCATIONPROC,        glGetUniformLocation);
-    OPENGL_GET_PROC(PFNGLUNIFORMMATRIX4FVPROC,          glUniformMatrix4fv);
+    if(!(g_hRC = GL_rCreateCtx(g_hDC))) {
+        LOG(g_uLogApp, LOG_F, TEXT("Create OpenGL ctx FAIL!"));
+        return -1;
+    }
+    if(GL_rInitExtensions()) {
+        LOG(g_uLogApp, LOG_F, TEXT("Init OpenGL extensions FAIL!"));
+        return -1;
+    }
 
     return 0;
 }
 INT     rWndProcDestroy(HWND hWnd) {
+
+    SM_rPopAll(&g_smOglState, NULL);
+
     // удаляем контекст рендеринга
     if (g_hRC) {
         wglMakeCurrent(NULL, NULL);
@@ -412,12 +347,142 @@ INT     rWndProcSize(HWND hWnd) {
     return 0;
 }
 INT     rWndProcPaint(HWND hWnd) {
+    QueryPerformanceCounter(&g_liQPC_old);
     if(g_bAnimating) {
         OPENGL_CALL(glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT));
+        SM_rProcessAll(&g_smOglState, 0, NULL);
+        SwapBuffers(g_hDC);
     }
-
-    SwapBuffers(g_hDC);
     ValidateRect(hWnd, NULL);
+    QueryPerformanceCounter(&g_liQPC);
+    g_uLastFrame = g_liQPC.LowPart - g_liQPC_old.LowPart;
+    g_fLastFrame = g_f1QPF * (FLOAT)g_uLastFrame;
+    return 0;
+}
+
+
+INT     rSOpenGLStart(LPSM lpsm, UINT uMsg, LPVOID ptr) {
+    static GLuint iGL_ShaderProgram = 0;
+    static GLuint iGL_VertexShader = 0;
+    static GLuint iGL_FragmentShader = 0;
+    static GLuint iGL_VAO = 0, iGL_VBO = 0;
+
+    // количество вершин в нашей геометрии, у нас простой треугольник
+    static const int MESH_VERTEX_COUNT = 3;
+
+    // размер одной вершины меша в байтах - 6 float на позицию и на цвет вершины
+    static const int VERTEX_SIZE = 6 * sizeof(float);
+
+    // смещения данных внутри вершины
+    static const int VERTEX_POSITION_OFFSET = 0;
+    static const int VERTEX_COLOR_OFFSET    = 2 * sizeof(float);
+    // подготовим данные для вывода треугольника, всего 3 вершины
+
+
+    if(uMsg == SM_MSG_PUSH) {
+        FLOAT triangleMesh[3 * 6] = {
+            -0.5f, -0.5f,  1.0f, 0.0f, 0.0f, 1.0f,
+             0.0f,  0.5f,  0.0f, 1.0f, 0.0f, 1.0f,
+             0.5f, -0.5f,  0.0f, 0.0f, 1.0f, 1.0f,
+        };
+
+        OPENGL_CALL(glClearColor(0.0f, 0.0f, 0.0f, 1.0f));
+        OPENGL_CALL(glClearDepth(1.0f));
+
+        if(!(iGL_VertexShader = GL_rCreateShaderFromFileA(GL_VERTEX_SHADER, "0.vs"))) {
+            return -1;
+        }
+        if(!(iGL_FragmentShader = GL_rCreateShaderFromFileA(GL_FRAGMENT_SHADER, "0.fs"))) {
+            return -1;
+        }
+        GLuint _ush[3];
+        _ush[0] = iGL_VertexShader;
+        _ush[1] = iGL_FragmentShader;
+        _ush[2] = 0;
+        if(!(iGL_ShaderProgram = GL_rCreateProgramm(_ush))) {
+            return -1;
+        }
+
+        OPENGL_CALL(glUseProgram(iGL_ShaderProgram));
+
+        // создадим и используем Vertex Array Object (VAO)
+        OPENGL_CALL(glGenVertexArrays(1, &iGL_VAO));
+        OPENGL_CALL(glBindVertexArray(iGL_VAO));
+
+        // создадим и используем Vertex Buffer Object (VBO)
+        OPENGL_CALL(glGenBuffers(1, &iGL_VBO));
+        OPENGL_CALL(glBindBuffer(GL_ARRAY_BUFFER, iGL_VBO));
+
+
+        // заполним VBO данными треугольника
+        OPENGL_CALL(glBufferData(GL_ARRAY_BUFFER, MESH_VERTEX_COUNT * VERTEX_SIZE,
+            triangleMesh, GL_STATIC_DRAW));
+
+        GLint positionLocation, colorLocation;
+
+        // получим позицию атрибута 'position' из шейдера
+        positionLocation = glGetAttribLocation(iGL_ShaderProgram, "position");
+        if (positionLocation != -1) {
+            // назначим на атрибут параметры доступа к VBO
+            glVertexAttribPointer(positionLocation, 2, GL_FLOAT, GL_FALSE,
+                VERTEX_SIZE, (const GLvoid*)VERTEX_POSITION_OFFSET);
+            // разрешим использование атрибута
+            OPENGL_CALL(glEnableVertexAttribArray(positionLocation));
+        }
+
+        // получим позицию атрибута 'color' из шейдера
+        colorLocation = glGetAttribLocation(iGL_ShaderProgram, "color");
+        if (colorLocation != -1)  {
+            // назначим на атрибут параметры доступа к VBO
+            OPENGL_CALL(glVertexAttribPointer(colorLocation, 4, GL_FLOAT, GL_FALSE,
+                VERTEX_SIZE, (const GLvoid*)VERTEX_COLOR_OFFSET));
+            // разрешим использование атрибута
+            OPENGL_CALL(glEnableVertexAttribArray(colorLocation));
+        }
+
+    } else if(uMsg == SM_MSG_POP) {
+        OPENGL_CALL(glBindBuffer(GL_ARRAY_BUFFER, 0));
+        OPENGL_CALL(glDeleteBuffers(1, &iGL_VBO));
+
+        OPENGL_CALL(glBindVertexArray(0));
+        OPENGL_CALL(glDeleteVertexArrays(1, &iGL_VAO));
+
+        OPENGL_CALL(glUseProgram(0));
+        OPENGL_CALL(glDeleteProgram(iGL_ShaderProgram));
+
+        OPENGL_CALL(glDeleteShader(iGL_VertexShader));
+        OPENGL_CALL(glDeleteShader(iGL_FragmentShader));
+    } else {
+        OPENGL_CALL(glUseProgram(iGL_ShaderProgram));
+        OPENGL_CALL(glBindVertexArray(iGL_VAO));
+
+        OPENGL_CALL(glBindBuffer(GL_ARRAY_BUFFER, iGL_VBO));
+        // OPENGL_CALL(glBufferData(GL_ARRAY_BUFFER, MESH_VERTEX_COUNT * VERTEX_SIZE, NULL, GL_STATIC_DRAW));
+
+        PFLOAT pF = NULL;
+
+        OPENGL_CALL(pF = (PFLOAT)glMapBuffer(GL_ARRAY_BUFFER, GL_WRITE_ONLY));
+
+        static FLOAT ff = 0.f;
+        for(int i = 0; i < MESH_VERTEX_COUNT; i++) {
+
+            pF[i*6 + 0] = (((FLOAT)(((UINT)(ff*100.f))%501))-250.f)*0.001f;
+            pF[i*6 + 1] = -(((FLOAT)(((UINT)(ff*100.f))%501))-250.f)*0.001f;
+            pF[i*6 + 2] = pF[i*6 + 3] = pF[i*6 + 4] = ff;
+            pF[i*6 + 5] = 1.f;
+        }
+
+        pF[6] = -0.5f;
+        pF[7] = -0.5f;
+        pF[12] = 0.5f;
+        pF[13] = -0.5f;
+
+        glUnmapBuffer(GL_ARRAY_BUFFER);
+        ff += 0.01f;
+
+        OPENGL_CALL(glDrawArrays(GL_TRIANGLES, 0, MESH_VERTEX_COUNT));
+        OPENGL_CHECK_FOR_ERRORS();
+    }
     return 0;
 }
 

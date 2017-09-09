@@ -9,6 +9,10 @@
 #define LOG_MAX_MESAGELEN        4096
 #define LOG_MESAGETAB            8
 
+
+extern UINT             g_uLogApp;
+extern UINT             g_uLogOGL;
+
 enum {
     LOG_V = 0,
     LOG_D,
