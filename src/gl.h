@@ -41,6 +41,7 @@ extern PFNGLATTACHSHADERPROC               glAttachShader;
 extern PFNGLDETACHSHADERPROC               glDetachShader;
 extern PFNGLGETSHADERIVPROC                glGetShaderiv;
 extern PFNGLGETSHADERINFOLOGPROC           glGetShaderInfoLog;
+
 // Shaders attributes
 extern PFNGLGETATTRIBLOCATIONPROC          glGetAttribLocation;
 extern PFNGLVERTEXATTRIBPOINTERPROC        glVertexAttribPointer;

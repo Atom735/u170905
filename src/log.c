@@ -10,6 +10,8 @@
 
 UINT             g_uLogApp = 0;
 UINT             g_uLogOGL = 0;
+UINT             g_uLogSM = 0;
+UINT             g_uLogFT = 0;
 
 BOOL    LOG_bRun                 = FALSE;
 HANDLE  LOG_hFile                = INVALID_HANDLE_VALUE;
@@ -28,6 +30,8 @@ VOID    LOG_rStart() {
 
     g_uLogApp = LOG_rNewCategory(TEXT("App"));
     g_uLogOGL = LOG_rNewCategory(TEXT("OpenGL"));
+    g_uLogSM = LOG_rNewCategory(TEXT("StateMan"));
+    g_uLogFT = LOG_rNewCategory(TEXT("FreeType"));
 
     LOG(0, LOG_INFO, TEXT("Log start"));
 }

@@ -1,5 +1,9 @@
-# Object files
+# Объектные файлы
 *.o
+# Статические библиотеки
+*.a
+# Динамические библиотеки
+*.so
 
 # Sublime Text
 *.sublime-workspace

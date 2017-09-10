@@ -35,4 +35,16 @@ INT     SM_rProcess(LPSM lpSM, UINT uMsg, LPVOID lpData);
 VOID    SM_rProcessAll(LPSM lpSM, UINT uMsg, LPVOID lpData);
 VOID    SM_rProcessAllETS(LPSM lpSM, UINT uMsg, LPVOID lpData);
 
+/*
+
+INT     rFT_I(LPSM lpsm, UINT uMsg, LPVOID ptr) {
+    if(uMsg == SM_MSG_PUSH) {
+    } else if(uMsg == SM_MSG_POP) {
+    } else {
+    }
+    return 0;
+}
+
+*/
+
 #endif

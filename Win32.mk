@@ -7,21 +7,22 @@ OUT_NAME := a.exe
 
 CPPFLAGS := -DDEBUG -D_DEBUG -DUNICODE -D_UNICODE
 CFLAGS := -O0 -g3 -Wall -std=c99
-LDFLAGS := -lOpenGL32 -lGDI32
+LDFLAGS := -lOpenGL32 -lGDI32 -lft28
 
 DIR_INCLUDES := \
 	src \
     $(wildcard libs/*/include)
 
-DIR_LIBS :=
-    # libs
+DIR_LIBS := \
+    libs
 
 SRC_FILES := \
 	src/main.c \
 	src/log.c \
 	src/sm.c \
 	src/utilities.c \
-	src/gl.c
+	src/gl.c \
+	src/ft.c
 
 OBJECTS := $(addprefix obj/, $(addsuffix .o, $(basename $(SRC_FILES))))
 OBJECTS_DIRS := $(sort $(dir $(OBJECTS)))

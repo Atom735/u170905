@@ -12,6 +12,8 @@
 
 extern UINT             g_uLogApp;
 extern UINT             g_uLogOGL;
+extern UINT             g_uLogSM;
+extern UINT             g_uLogFT;
 
 enum {
     LOG_V = 0,
@@ -47,5 +49,11 @@ LPCTSTR LOG_rOtherLog(HANDLE hFile, UINT uCategory, UINT uLvl, LPCTSTR lpszFmt, 
 
 LPCTSTR LOG_rGetBuf();
 UINT    LOG_rGetBufSize();
+
+/*
+
+LOG(g_uLogApp, LOG_I, TEXT("textasdas"), g_liQPC.QuadPart);
+
+*/
 
 #endif

@@ -8,6 +8,7 @@
 #include "sm.h"
 #include "gl.h"
 #include "utilities.h"
+#include "ft.h"
 
 
 CONST LPCTSTR   g_clpszClassName = TEXT("A735 Core Window Class");
@@ -51,6 +52,9 @@ INT     rWndProcSize(HWND hWnd);
 INT     rWndProcPaint(HWND hWnd);
 
 INT     rSOpenGLStart(LPSM lpsm, UINT uMsg, LPVOID ptr);
+INT     rSOpenGL_BackGround(LPSM lpsm, UINT uMsg, LPVOID ptr);
+INT     rSOpenGL_DrawText(LPSM lpsm, UINT uMsg, LPVOID ptr);
+
 
 INT main(INT argc, LPSTR argv[]) {
     INT o = rAppInit();
@@ -126,13 +130,26 @@ INT     rAppInit() {
     if(o) return o;
     o = SM_rPush(&g_smAppState, rAppICreateWindow, NULL);
     if(o) return o;
+    o = SM_rPush(&g_smAppState, FT_I, NULL);
+    if(o) return o;
     o = SM_rPush(&g_smAppState, rAppIIdle, NULL);
     if(o) return o;
 
+
+    if((o = SM_rPush(&g_smOglState, rSOpenGL_BackGround, NULL))) {
+        SM_rPop(&g_smOglState, NULL);
+        return o;
+    }
     if((o = SM_rPush(&g_smOglState, rSOpenGLStart, NULL))) {
         SM_rPop(&g_smOglState, NULL);
         return o;
     }
+    if((o = SM_rPush(&g_smOglState, rSOpenGL_DrawText, NULL))) {
+        SM_rPop(&g_smOglState, NULL);
+        return o;
+    }
+
+
 
     QueryPerformanceCounter(&g_liQPC);
 
@@ -175,6 +192,7 @@ INT     rAppLoop() {
 }
 
 INT     rAppIRegisterClass(LPSM lpsm, UINT uMsg, LPVOID ptr) {
+
     if(uMsg == SM_MSG_PUSH) {
         WNDCLASSEX wcx;
         memset(&wcx, 0, sizeof(wcx));
@@ -360,6 +378,202 @@ INT     rWndProcPaint(HWND hWnd) {
     return 0;
 }
 
+INT     rSOpenGL_BackGround(LPSM lpsm, UINT uMsg, LPVOID ptr) {
+    static GLuint iSP = 0;
+    static GLuint iVS = 0;
+    static GLuint iFS = 0;
+    static GLuint iVAO = 0;
+    static GLuint iVBO = 0;
+
+    if(uMsg == SM_MSG_PUSH) {
+        struct {
+            FLOAT x, y;
+            FLOAT r, g, b, a;
+        } m[6];
+
+        m[1].x = m[4].x = m[5].x = m[0].y = m[1].y = m[4].y =  1.0f;
+        m[0].x = m[2].x = m[3].x = m[2].y = m[3].y = m[5].y = -1.0f;
+
+
+        m[0].r = m[1].r = m[2].r = m[3].r = m[4].r = m[5].r = 1.0f;
+        m[0].a = m[1].a = m[2].a = m[3].a = m[4].a = m[5].a = 1.0f;
+
+        m[0].g = (FLOAT)0xFD/(FLOAT)0xFF;
+        m[0].b = (FLOAT)0xE7/(FLOAT)0xFF;
+
+        m[1].g = m[4].g = (FLOAT)0xD7/(FLOAT)0xFF;
+        m[1].b = m[4].b = (FLOAT)0x40/(FLOAT)0xFF;
+
+        m[2].g = m[3].g = (FLOAT)0xD1/(FLOAT)0xFF;
+        m[2].b = m[3].b = (FLOAT)0x80/(FLOAT)0xFF;
+
+        m[5].g = (FLOAT)0xCC/(FLOAT)0xFF;
+        m[5].b = (FLOAT)0xBC/(FLOAT)0xFF;
+
+        // FFFDE7
+        // FFD740
+        // FFD180
+        // FFCCBC
+
+
+        if(!(iVS = GL_rCreateShaderFromFileA(GL_VERTEX_SHADER, "data/2dRGBA.v.glsl"))) {
+            return -1;
+        }
+        if(!(iFS = GL_rCreateShaderFromFileA(GL_FRAGMENT_SHADER, "data/2dRGBA.f.glsl"))) {
+            return -1;
+        }
+        GLuint u[3]; u[0] = iVS; u[1] = iFS; u[2] = 0;
+        if(!(iSP = GL_rCreateProgramm(u))) {
+            return -1;
+        }
+        OPENGL_CALL(glUseProgram(iSP));
+        // создадим и используем Vertex Array Object (VAO)
+        OPENGL_CALL(glGenVertexArrays(1, &iVAO));
+        OPENGL_CALL(glBindVertexArray(iVAO));
+        // создадим и используем Vertex Buffer Object (VBO)
+        OPENGL_CALL(glGenBuffers(1, &iVBO));
+        OPENGL_CALL(glBindBuffer(GL_ARRAY_BUFFER, iVBO));
+        // заполним VBO данными треугольника
+        OPENGL_CALL(glBufferData(GL_ARRAY_BUFFER, sizeof(FLOAT)*6*6, m, GL_STATIC_DRAW));
+        GLint iGLSL_pos, iGLSL_color;
+        // получим позицию атрибута 'in_pos' из шейдера
+        OPENGL_CALL(iGLSL_pos = glGetAttribLocation(iSP, "in_pos"));
+        if (iGLSL_pos != -1) {
+            // назначим на атрибут параметры доступа к VBO
+            OPENGL_CALL(glVertexAttribPointer(iGLSL_pos, 2, GL_FLOAT, GL_FALSE, sizeof(FLOAT)*6, (const GLvoid*)0));
+            // разрешим использование атрибута
+            OPENGL_CALL(glEnableVertexAttribArray(iGLSL_pos));
+        }
+        // получим позицию атрибута 'in_color' из шейдера
+        iGLSL_color = glGetAttribLocation(iSP, "in_color");
+        if (iGLSL_color != -1)  {
+            // назначим на атрибут параметры доступа к VBO
+            OPENGL_CALL(glVertexAttribPointer(iGLSL_color, 4, GL_FLOAT, GL_FALSE, sizeof(FLOAT)*6, (const GLvoid*)(sizeof(FLOAT)*2)));
+            // разрешим использование атрибута
+            OPENGL_CALL(glEnableVertexAttribArray(iGLSL_color));
+        }
+
+    } else if(uMsg == SM_MSG_POP) {
+        OPENGL_CALL(glBindBuffer(GL_ARRAY_BUFFER, 0));
+        OPENGL_CALL(glDeleteBuffers(1, &iVBO));
+        OPENGL_CALL(glBindVertexArray(0));
+        OPENGL_CALL(glDeleteVertexArrays(1, &iVAO));
+        OPENGL_CALL(glUseProgram(0));
+        OPENGL_CALL(glDeleteProgram(iSP));
+        OPENGL_CALL(glDeleteShader(iVS));
+        OPENGL_CALL(glDeleteShader(iFS));
+    } else {
+        OPENGL_CALL(glUseProgram(iSP));
+        OPENGL_CALL(glBindVertexArray(iVAO));
+        OPENGL_CALL(glBindBuffer(GL_ARRAY_BUFFER, iVBO));
+        OPENGL_CALL(glDrawArrays(GL_TRIANGLES, 0, 6));
+    }
+    return 0;
+}
+
+INT     rSOpenGL_DrawText(LPSM lpsm, UINT uMsg, LPVOID ptr) {
+    static GLuint iSP = 0;
+    static GLuint iVS = 0;
+    static GLuint iFS = 0;
+    static GLuint iVAO = 0;
+    static GLuint iVBO = 0;
+    static GLuint iTEX = 0;
+
+    if(uMsg == SM_MSG_PUSH) {
+        struct {
+            FLOAT x, y, u, v;
+            FLOAT r, g, b, a;
+        } m[6];
+
+        m[1].x = m[4].x = m[5].x = m[0].y = m[1].y = m[4].y =  16.0f;
+        m[0].x = m[2].x = m[3].x = m[2].y = m[3].y = m[5].y = 528.0f;
+
+
+        m[0].r = m[1].r = m[2].r = m[3].r = m[4].r = m[5].r = 1.0f;
+        m[0].g = m[1].g = m[2].g = m[3].g = m[4].g = m[5].g = 1.0f;
+        m[0].b = m[1].b = m[2].b = m[3].b = m[4].b = m[5].b = 1.0f;
+        m[0].a = m[1].a = m[2].a = m[3].a = m[4].a = m[5].a = 1.0f;
+
+        // FFFDE7
+        // FFD740
+        // FFD180
+        // FFCCBC
+
+
+
+
+        if(!(iVS = GL_rCreateShaderFromFileA(GL_VERTEX_SHADER, "data/2dTexRGBA.v.glsl"))) {
+            return -1;
+        }
+        if(!(iFS = GL_rCreateShaderFromFileA(GL_FRAGMENT_SHADER, "data/2dTexRGBA.f.glsl"))) {
+            return -1;
+        }
+        GLuint u[3]; u[0] = iVS; u[1] = iFS; u[2] = 0;
+        if(!(iSP = GL_rCreateProgramm(u))) {
+            return -1;
+        }
+
+        OPENGL_CALL(glGenTextures(1, &iTEX));
+        OPENGL_CALL(glBindTexture(GL_TEXTURE_2D, iTEX));
+        OPENGL_CALL(glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR));
+        OPENGL_CALL(glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR));
+
+        OPENGL_CALL(glUseProgram(iSP));
+        // создадим и используем Vertex Array Object (VAO)
+        OPENGL_CALL(glGenVertexArrays(1, &iVAO));
+        OPENGL_CALL(glBindVertexArray(iVAO));
+        // создадим и используем Vertex Buffer Object (VBO)
+        OPENGL_CALL(glGenBuffers(1, &iVBO));
+        OPENGL_CALL(glBindBuffer(GL_ARRAY_BUFFER, iVBO));
+        // заполним VBO данными треугольника
+        OPENGL_CALL(glBufferData(GL_ARRAY_BUFFER, sizeof(FLOAT)*6*8, m, GL_STATIC_DRAW));
+        GLint iGLSL_in_pos, iGLSL_in_tex, iGLSL_in_color;
+        GLint iGLSL_u_tex0, iGLSL_u_VP;
+
+        OPENGL_CALL(iGLSL_in_pos = glGetAttribLocation(iSP, "in_pos"));
+        if (iGLSL_in_pos != -1) {
+            OPENGL_CALL(glVertexAttribPointer(iGLSL_in_pos, 2, GL_FLOAT, GL_FALSE, sizeof(FLOAT)*8, (const GLvoid*)0));
+            OPENGL_CALL(glEnableVertexAttribArray(iGLSL_in_pos));
+        }
+        OPENGL_CALL(iGLSL_in_tex = glGetAttribLocation(iSP, "in_texcoord"));
+        if (iGLSL_in_tex != -1) {
+            OPENGL_CALL(glVertexAttribPointer(iGLSL_in_tex, 2, GL_FLOAT, GL_FALSE, sizeof(FLOAT)*8, (const GLvoid*)(sizeof(FLOAT)*2)));
+            OPENGL_CALL(glEnableVertexAttribArray(iGLSL_in_tex));
+        }
+        OPENGL_CALL(iGLSL_in_color = glGetAttribLocation(iSP, "in_color"));
+        if (iGLSL_in_color != -1)  {
+            OPENGL_CALL(glVertexAttribPointer(iGLSL_in_color, 4, GL_FLOAT, GL_FALSE, sizeof(FLOAT)*6, (const GLvoid*)(sizeof(FLOAT)*4)));
+            OPENGL_CALL(glEnableVertexAttribArray(iGLSL_in_color));
+        }
+        OPENGL_CALL(iGLSL_u_tex0 = glGetUniformLocation(iSP, "u_tex0"));
+        if (iGLSL_u_tex0 != -1)  {
+        }
+        OPENGL_CALL(iGLSL_u_VP = glGetUniformLocation(iSP, "u_VP"));
+        if (iGLSL_u_VP != -1)  {
+        }
+
+    } else if(uMsg == SM_MSG_POP) {
+        OPENGL_CALL(glDeleteTextures(1, &iTEX));
+        OPENGL_CALL(glBindBuffer(GL_ARRAY_BUFFER, 0));
+        OPENGL_CALL(glDeleteBuffers(1, &iVBO));
+        OPENGL_CALL(glBindVertexArray(0));
+        OPENGL_CALL(glDeleteVertexArrays(1, &iVAO));
+        OPENGL_CALL(glUseProgram(0));
+        OPENGL_CALL(glDeleteProgram(iSP));
+        OPENGL_CALL(glDeleteShader(iVS));
+        OPENGL_CALL(glDeleteShader(iFS));
+    } else {
+        OPENGL_CALL(glUseProgram(iSP));
+        OPENGL_CALL(glActiveTexture(GL_TEXTURE0));
+        // OPENGL_CALL(glUniform1i(uniform_mytexture, /*GL_TEXTURE*/0));
+        OPENGL_CALL(glBindTexture(GL_TEXTURE_2D, iTEX));
+        OPENGL_CALL(glBindVertexArray(iVAO));
+
+        OPENGL_CALL(glBindBuffer(GL_ARRAY_BUFFER, iVBO));
+        OPENGL_CALL(glDrawArrays(GL_TRIANGLES, 0, 6));
+    }
+    return 0;
+}
 
 INT     rSOpenGLStart(LPSM lpsm, UINT uMsg, LPVOID ptr) {
     static GLuint iGL_ShaderProgram = 0;
@@ -424,8 +638,8 @@ INT     rSOpenGLStart(LPSM lpsm, UINT uMsg, LPVOID ptr) {
         positionLocation = glGetAttribLocation(iGL_ShaderProgram, "position");
         if (positionLocation != -1) {
             // назначим на атрибут параметры доступа к VBO
-            glVertexAttribPointer(positionLocation, 2, GL_FLOAT, GL_FALSE,
-                VERTEX_SIZE, (const GLvoid*)VERTEX_POSITION_OFFSET);
+            OPENGL_CALL(glVertexAttribPointer(positionLocation, 2, GL_FLOAT, GL_FALSE,
+                VERTEX_SIZE, (const GLvoid*)VERTEX_POSITION_OFFSET));
             // разрешим использование атрибута
             OPENGL_CALL(glEnableVertexAttribArray(positionLocation));
         }
