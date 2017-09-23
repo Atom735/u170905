@@ -26,34 +26,24 @@ SRC_FILES := \
 	src/autofit/autofit.c \
 	src/gzip/ftgzip.c
 
-
-
-LIBSTATIC_OBJECTS := $(addprefix obj/a/, $(addsuffix .o, $(basename $(SRC_FILES))))
-LIBSHARED_OBJECTS := $(addprefix obj/so/, $(addsuffix .o, $(basename $(SRC_FILES))))
-OBJECTS_DIRS := $(sort $(dir $(LIBSTATIC_OBJECTS) $(LIBSHARED_OBJECTS)))
+LIBSTATIC_OBJECTS := $(addprefix obj/, $(addsuffix .o, $(basename $(SRC_FILES))))
+OBJECTS_DIRS := $(sort $(dir $(LIBSTATIC_OBJECTS)))
 
 CFLAGS += $(addprefix -I, $(C_INCLUDES))
 
-
-all : dir_objects ../lib$(MODULE_NAME).a ../$(MODULE_NAME).so
+all : dir_objects ../lib$(MODULE_NAME).a
 
 ../lib$(MODULE_NAME).a : $(LIBSTATIC_OBJECTS)
 	$(AR) cr $@ $(LIBSTATIC_OBJECTS)
 
-$(LIBSTATIC_OBJECTS) : obj/a/%.o : %.c
+$(LIBSTATIC_OBJECTS) : obj/%.o : %.c
 	$(CC) -c $(CFLAGS) $< -o $@
-
-../$(MODULE_NAME).so : $(LIBSHARED_OBJECTS)
-	$(CC) -shared -o $@ $(LIBSHARED_OBJECTS)
-
-$(LIBSHARED_OBJECTS) : obj/so/%.o : %.c
-	$(CC) -c $(CFLAGS) -fPIC $< -o $@
 
 dir_objects :
 	-mkdir -p $(OBJECTS_DIRS)
 
 clean :
-	-rm -rf obj ../lib$(MODULE_NAME).a ../$(MODULE_NAME).so
+	-rm -rf obj ../lib$(MODULE_NAME).a
 
 
 #	Файлы исходников:

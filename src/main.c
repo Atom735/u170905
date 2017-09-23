@@ -1,704 +1,606 @@
-#define WIN32_LEAN_AND_MEAN
-#define _WIN32_WINNT _WIN32_WINNT_WINXP
-#include <Windows.h>
+#include <SDL2/SDL.h>
+#include <SDL2/SDL_stdinc.h>
 
-#include <stdlib.h>
-
-#include "log.h"
-#include "sm.h"
-#include "gl.h"
-#include "utilities.h"
 #include "ft.h"
+#include "gl.h"
+#include "utils.h"
 
 
-CONST LPCTSTR   g_clpszClassName = TEXT("A735 Core Window Class");
+// безопасный вызов функции OpenGL
+#define OPENGL_CALL(exp) \
+    { exp; GLenum glErr=glGetError(); if(glErr != GL_NO_ERROR) SDL_Log("expression \"" #exp "\" Error %d(0x%x)", glErr, glErr); }
 
-HINSTANCE       g_hInstance     = NULL;
-HWND            g_hWnd          = NULL;
-HDC             g_hDC           = NULL;
-HGLRC           g_hRC           = NULL;
+typedef struct sA5App {
+    SDL_Window         *wnd;
+    SDL_GLContext       glctx;
 
-BOOL            g_bRun          = TRUE;
-BOOL            g_bActive       = TRUE;
-BOOL            g_bAnimating    = TRUE;
-INT             g_nWidth        = 640;
-INT             g_nHeight       = 480;
+    int                 bRun;
+    int                 bAnimation;
+    int                 iReturn;
 
-LARGE_INTEGER   g_liQPF;
-LARGE_INTEGER   g_liQPC;
-LARGE_INTEGER   g_liQPC_old;
-UINT            g_uLastFrame;
-FLOAT           g_fLastFrame;
-FLOAT           g_f1QPF;
+    float               f_sW, f_sH, f_mX, f_mY;
 
-SM              g_smAppState;
-SM              g_smOglState;
+    void               *ftLib;
+    void               *ftCache;
+
+    struct {
+        struct {
+            GLuint sp, vs, fs;
+            GLint _aPos, _aCol,
+                _uMat;
+        } s2DC;
+        struct {
+            GLuint sp, vs, fs;
+            GLint _aPos, _aTex,
+                _uMat, _uTex;
+        } s2DT;
+        struct {
+            GLuint sp, vs, fs;
+            GLint _aPos, _aTex, _aCol,
+                _uMat, _uTex;
+        } s2DCT;
+        struct {
+            GLuint sp, vs, fs;
+            GLint _aPos, _aTex, _aCol,
+                _uPos, _uMat, _uTex, _uTsz;
+        } s2DTXT;
+        GLuint vbo_text;
+        GLuint vbo_mouse;
+        GLuint vbo_tt;
+        GLuint tex_tt;
+    } glfvf;
+} A5App, *pA5App;
+
+typedef struct sv2DC {
+    GLfloat x, y;
+    GLfloat r, g, b, a;
+} sv2DC, *psv2DC;
+
+typedef struct sv2DT {
+    GLfloat x, y, u, v;
+} sv2DT, *psv2DT;
+
+typedef struct sv2DCT {
+    GLfloat x, y, u, v;
+    GLfloat r, g, b, a;
+} sv2DCT, *psv2DCT;
+
+typedef struct sv2DTXT {
+    GLshort x, y, u, v;
+    union {
+        GLuint abgr;
+        struct {
+            GLubyte r, g, b, a;
+        };
+    };
+} sv2DTXT, *psv2DTXT;
+
+const GLchar
+    sz_aPos[] = "v_pos",
+    sz_aCol[] = "v_col",
+    sz_aTex[] = "v_tex",
+    sz_uPos[] = "u_pos",
+    sz_uMat[] = "u_mat",
+    sz_uTex[] = "u_tex",
+    sz_uTsz[] = "u_tsz";
+
+void event(pA5App pApp, SDL_Event *pEvent) {
+    // SDL_LogVerbose(SDL_LOG_CATEGORY_APPLICATION, "%i (%i.%is) %x(%s)\n", pEvent->common.timestamp, pEvent->common.timestamp/1000, pEvent->common.timestamp%1000, pEvent->type, info_get_sdl_event_type(pEvent->type));
+    SDL_Log("%9i EVENT %s", pEvent->common.timestamp, info_get_sdl_event_type(pEvent->type));
+    switch(pEvent->type) {
+        case SDL_WINDOWEVENT: {
+            info_sdl_event_window(&pEvent->window);
+            switch(pEvent->window.event) {
+                case SDL_WINDOWEVENT_RESIZED: {
+                    glViewport(0, 0, pEvent->window.data1, pEvent->window.data2);
+                    return;
+                }
+            }
+            return;
+        }
+        case SDL_QUIT: {
+            pApp->bRun = 0;
+            return;
+        }
+    }
+}
+
+void drawTxt(pA5App pApp) {
+    glUseProgram(pApp->glfvf.s2DTXT.sp);
+
+    glActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_2D, pApp->glfvf.tex_tt);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glUniform2f(pApp->glfvf.s2DTXT._uPos, pApp->f_mX, pApp->f_mY);
+
+    glBindBuffer(GL_ARRAY_BUFFER, pApp->glfvf.vbo_text);
+
+    char *text = NULL;
+
+    if(SDL_HasClipboardText()) {
+        text = SDL_GetClipboardText();
+    } else {
+        text = SDL_malloc(256);
+        text[0] = 'x';
+        text[1] = 0;
+    }
+
+    int i = 0;
+    int X = 0;
+    int Y = 0;
+
+    psv2DTXT pv = glMapBuffer(GL_ARRAY_BUFFER, GL_WRITE_ONLY);
 
 
-// обработчик сообщений окна
-LRESULT CALLBACK rWndProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam);
-
-INT     rAppInit();
-VOID    rAppDeInit();
-INT     rAppLoop();
-
-INT     rAppIRegisterClass(LPSM lpsm, UINT uMsg, LPVOID ptr);
-INT     rAppICreateWindow(LPSM lpsm, UINT uMsg, LPVOID ptr);
-INT     rAppIIdle(LPSM lpsm, UINT uMsg, LPVOID ptr);
-
-INT     rWndProcCreate(HWND hWnd);
-INT     rWndProcDestroy(HWND hWnd);
-INT     rWndProcSize(HWND hWnd);
-INT     rWndProcPaint(HWND hWnd);
-
-INT     rSOpenGLStart(LPSM lpsm, UINT uMsg, LPVOID ptr);
-INT     rSOpenGL_BackGround(LPSM lpsm, UINT uMsg, LPVOID ptr);
-INT     rSOpenGL_DrawText(LPSM lpsm, UINT uMsg, LPVOID ptr);
+    char *pT = text;
+    while(*pT) {
+        if(*pT == '\n') {
+            X = 0;
+            Y += 32;
+            ++pT;
+            continue;
+        }
+        Uint32 iChar = *pT;
+        if((*pT & 0x80) && (*pT & 0x40)) {
+            if(*pT & 0x20) {
+                iChar = ((pT[2]&0x3f)) + ((pT[1]&0x3f)<<6) + ((pT[0]&0x0f)<<12);
+                ++pT;
+            } else
+                iChar = ((pT[1]&0x3f)) + ((pT[0]&0x1f)<<6);
+            ++pT;
+        }
 
 
-INT main(INT argc, LPSTR argv[]) {
-    INT o = rAppInit();
-    if(o) return o;
-    o = rAppLoop();
-    rAppDeInit();
+        psA5Glyph pG = a5ft_get_char(pApp->ftCache, 0, iChar, 32);
+        if(!pG) pG = a5ft_get_char(pApp->ftCache, 0, '?', 32);
+        if(pG) {
+            pv[i*6 + 5].abgr = pv[i*6 + 4].abgr = pv[i*6 + 3].abgr = pv[i*6 + 2].abgr = pv[i*6 + 1].abgr = pv[i*6 + 0].abgr = 0xffffffff;
+
+            pv[i*6+0].x = X+pG->X;
+            pv[i*6+0].y = Y+pG->Y;
+            pv[i*6+0].u = pG->x;
+            pv[i*6+0].v = pG->y;
+
+            pv[i*6+1].x = X+pG->X+pG->w;
+            pv[i*6+1].y = Y+pG->Y;
+            pv[i*6+1].u = pG->x+pG->w;
+            pv[i*6+1].v = pG->y;
+
+            pv[i*6+2].x = X+pG->X;
+            pv[i*6+2].y = Y+pG->Y+pG->h;
+            pv[i*6+2].u = pG->x;
+            pv[i*6+2].v = pG->y+pG->h;
+
+            pv[i*6+3] = pv[i*6+2];
+            pv[i*6+4] = pv[i*6+1];
+
+            pv[i*6+5].x = X+pG->X+pG->w;
+            pv[i*6+5].y = Y+pG->Y+pG->h;
+            pv[i*6+5].u = pG->x+pG->w;
+            pv[i*6+5].v = pG->y+pG->h;
+
+            X += pG->A;
+            ++i;
+        }
+        ++pT;
+    }
+    SDL_free(text);
+
+    glUnmapBuffer(GL_ARRAY_BUFFER);
+
+    glEnableVertexAttribArray(pApp->glfvf.s2DTXT._aPos);
+    glEnableVertexAttribArray(pApp->glfvf.s2DTXT._aTex);
+    glEnableVertexAttribArray(pApp->glfvf.s2DTXT._aCol);
+    glVertexAttribPointer(pApp->glfvf.s2DTXT._aPos, 2, GL_SHORT, GL_FALSE, sizeof(sv2DTXT), &((psv2DTXT)0)->x);
+    glVertexAttribPointer(pApp->glfvf.s2DTXT._aTex, 2, GL_SHORT, GL_FALSE, sizeof(sv2DTXT), &((psv2DTXT)0)->u);
+    glVertexAttribPointer(pApp->glfvf.s2DTXT._aCol, 4, GL_UNSIGNED_BYTE, GL_TRUE, sizeof(sv2DTXT), &((psv2DTXT)0)->r);
+    glDrawArrays(GL_TRIANGLES, 0, 6*i);
+    glDisableVertexAttribArray(pApp->glfvf.s2DTXT._aPos);
+    glDisableVertexAttribArray(pApp->glfvf.s2DTXT._aTex);
+    glDisableVertexAttribArray(pApp->glfvf.s2DTXT._aCol);
+}
+
+void animation(pA5App pApp) {
+    if(a5ft_cache_update(pApp->ftCache, 0)) {
+        glBindTexture(GL_TEXTURE_2D, pApp->glfvf.tex_tt);
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RED, 512, 512, 0, GL_RED, GL_UNSIGNED_BYTE, pApp->ftCache);
+    }
+
+    static GLfloat r = 0.f;
+    static GLfloat g = 0.f;
+    static GLfloat b = 0.f;
+    glClearColor((r>1.f?2.f-r:r)*0.33f,(g>1.f?2.f-g:g)*0.33f,(b>1.f?2.f-b:b)*0.33f,1);
+    r += 0.003f;
+    g += 0.0039f;
+    b += 0.0047f;
+    if(r>2.f) r=0.f;
+    if(g>2.f) g=0.f;
+    if(b>2.f) b=0.f;
+    glClear(GL_COLOR_BUFFER_BIT);
+
+    int ds_w, ds_h;
+    SDL_GL_GetDrawableSize(pApp->wnd, &ds_w, &ds_h);
+    float f_w = (float)ds_w;
+    float f_h = (float)ds_h;
+
+    int ms_x, ms_y;
+    SDL_GetMouseState(&ms_x, &ms_y);
+    ms_y = ds_h-ms_y;
+    float f_x = (float)ms_x;
+    float f_y = (float)ms_y;
+    pApp->f_mX = f_x;
+    pApp->f_mY = f_h-f_y-1.0f;
+    pApp->f_sW = f_w;
+    pApp->f_sH = f_h;
+    {
+        glUseProgram(pApp->glfvf.s2DC.sp);
+
+        glUniform2f(pApp->glfvf.s2DC._uMat, 2.0f/f_w, 2.0f/f_h);
+
+        glBindBuffer(GL_ARRAY_BUFFER, pApp->glfvf.vbo_mouse);
+        psv2DC pv = glMapBuffer(GL_ARRAY_BUFFER, GL_WRITE_ONLY);
+        for(int i=0; i<6; ++i) {
+            pv[i].x = f_x; pv[i].y = f_y;
+            pv[i].a = pv[i].b = pv[i].g = pv[i].r = 1.0f;
+        }
+        pv[1].x -= 8.0f; pv[1].y += 10.0f; pv[2].y += 13.0f;
+        pv[4].x = f_x + 100.0f*SDL_cosf(f_x*0.01f);
+        pv[4].y = f_y + 100.0f*SDL_sinf(f_x*0.01f);
+        pv[5].x = f_x + 100.0f*SDL_cosf(f_y*0.01f);
+        pv[5].y = f_y + 100.0f*SDL_sinf(f_y*0.01f);
+        glUnmapBuffer(GL_ARRAY_BUFFER);
+
+        glEnableVertexAttribArray(pApp->glfvf.s2DC._aPos);
+        glEnableVertexAttribArray(pApp->glfvf.s2DC._aCol);
+        glVertexAttribPointer(pApp->glfvf.s2DC._aPos, 2, GL_FLOAT, GL_FALSE, sizeof(sv2DC), &((psv2DC)0)->x);
+        glVertexAttribPointer(pApp->glfvf.s2DC._aCol, 4, GL_FLOAT, GL_FALSE, sizeof(sv2DC), &((psv2DC)0)->r);
+        glDrawArrays(GL_TRIANGLES, 0, 6);
+        glDisableVertexAttribArray(pApp->glfvf.s2DC._aPos);
+        glDisableVertexAttribArray(pApp->glfvf.s2DC._aCol);
+    }
+    {
+        glUseProgram(pApp->glfvf.s2DTXT.sp);
+
+        glActiveTexture(GL_TEXTURE0);
+        glBindTexture(GL_TEXTURE_2D, pApp->glfvf.tex_tt);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+        glUniform1i(pApp->glfvf.s2DTXT._uTex, 0);
+
+        glUniform2f(pApp->glfvf.s2DTXT._uMat, 2.0f/f_w, -2.0f/f_h);
+        glUniform2f(pApp->glfvf.s2DTXT._uPos, 0.0f, 0.0f);
+        glUniform2f(pApp->glfvf.s2DTXT._uTsz, 1.0f/512.0f, 1.0f/512.0f);
+
+        glBindBuffer(GL_ARRAY_BUFFER, pApp->glfvf.vbo_tt);
+
+
+        glEnableVertexAttribArray(pApp->glfvf.s2DTXT._aPos);
+        glEnableVertexAttribArray(pApp->glfvf.s2DTXT._aTex);
+        glEnableVertexAttribArray(pApp->glfvf.s2DTXT._aCol);
+        glVertexAttribPointer(pApp->glfvf.s2DTXT._aPos, 2, GL_SHORT, GL_FALSE, sizeof(sv2DTXT), &((psv2DTXT)0)->x);
+        glVertexAttribPointer(pApp->glfvf.s2DTXT._aTex, 2, GL_SHORT, GL_FALSE, sizeof(sv2DTXT), &((psv2DTXT)0)->u);
+        glVertexAttribPointer(pApp->glfvf.s2DTXT._aCol, 4, GL_UNSIGNED_BYTE, GL_TRUE, sizeof(sv2DTXT), &((psv2DTXT)0)->r);
+        glDrawArrays(GL_TRIANGLES, 0, 6);
+        glDisableVertexAttribArray(pApp->glfvf.s2DTXT._aPos);
+        glDisableVertexAttribArray(pApp->glfvf.s2DTXT._aTex);
+        glDisableVertexAttribArray(pApp->glfvf.s2DTXT._aCol);
+    }
+    drawTxt(pApp);
+    SDL_GL_SwapWindow(pApp->wnd);
+}
+
+int resources_init(pA5App pApp) {
+
+    a5ft_init(&pApp->ftLib);
+    a5ft_cache_init(pApp->ftLib, &pApp->ftCache, 512, 4);
+    a5ft_new_font_from_file(pApp->ftCache, "data/fonts/RobotoSlab-Regular.ttf");
+    for(int j = 4; j<16; ++j)
+    for (int i = 0x20; i <= 0x7f; ++i){
+        a5ft_new_char(pApp->ftCache, 0, i, j*4);
+    }
+
+    GLint link_ok = GL_FALSE;
+
+    /* Init 2D Colored Shader */
+    {
+        if (!(pApp->glfvf.s2DC.vs = create_shader("data/shader/2DC.v.glsl", GL_VERTEX_SHADER))) {
+            print_log(pApp->glfvf.s2DC.vs);
+            return 0x0e01;
+        }
+        if (!(pApp->glfvf.s2DC.fs = create_shader("data/shader/2DC.f.glsl", GL_FRAGMENT_SHADER))) {
+            print_log(pApp->glfvf.s2DC.fs);
+            return 0x0e02;
+        }
+        pApp->glfvf.s2DC.sp = glCreateProgram();
+        glAttachShader(pApp->glfvf.s2DC.sp, pApp->glfvf.s2DC.vs);
+        glAttachShader(pApp->glfvf.s2DC.sp, pApp->glfvf.s2DC.fs);
+        glLinkProgram (pApp->glfvf.s2DC.sp);
+        glGetProgramiv(pApp->glfvf.s2DC.sp, GL_LINK_STATUS, &link_ok);
+        if (!link_ok) {
+            print_log(pApp->glfvf.s2DC.sp);
+            return 0x0e0f;
+        }
+        if ((pApp->glfvf.s2DC._aPos = glGetAttribLocation(pApp->glfvf.s2DC.sp, sz_aPos)) == -1) {
+            SDL_Log("Could not bind attribute \"%s\"\n", sz_aPos);
+            return 0x0e08;
+        }
+        if ((pApp->glfvf.s2DC._aCol = glGetAttribLocation(pApp->glfvf.s2DC.sp, sz_aCol)) == -1) {
+            SDL_Log("Could not bind attribute \"%s\"\n", sz_aCol);
+            return 0x0e09;
+        }
+        if ((pApp->glfvf.s2DC._uMat = glGetUniformLocation(pApp->glfvf.s2DC.sp, sz_uMat)) == -1) {
+            SDL_Log("Could not bind uniform   \"%s\"\n", sz_uMat);
+            return 0x0e0a;
+        }
+        link_ok = GL_FALSE;
+    }
+    /* Init 2D Textured Shader */
+    {
+
+        if (!(pApp->glfvf.s2DT.vs = create_shader("data/shader/2DT.v.glsl", GL_VERTEX_SHADER))) {
+            print_log(pApp->glfvf.s2DT.vs);
+            return 0x0e11;
+        }
+        if (!(pApp->glfvf.s2DT.fs = create_shader("data/shader/2DT.f.glsl", GL_FRAGMENT_SHADER))) {
+            print_log(pApp->glfvf.s2DT.fs);
+            return 0x0e12;
+        }
+        pApp->glfvf.s2DT.sp = glCreateProgram();
+        glAttachShader(pApp->glfvf.s2DT.sp, pApp->glfvf.s2DT.vs);
+        glAttachShader(pApp->glfvf.s2DT.sp, pApp->glfvf.s2DT.fs);
+        glLinkProgram (pApp->glfvf.s2DT.sp);
+        glGetProgramiv(pApp->glfvf.s2DT.sp, GL_LINK_STATUS, &link_ok);
+        if (!link_ok) {
+            print_log(pApp->glfvf.s2DT.sp);
+            return 0x0e1f;
+        }
+        if ((pApp->glfvf.s2DT._aPos = glGetAttribLocation(pApp->glfvf.s2DT.sp, sz_aPos)) == -1) {
+            SDL_Log("Could not bind attribute \"%s\"\n", sz_aPos);
+            return 0x0e18;
+        }
+        if ((pApp->glfvf.s2DT._aTex = glGetAttribLocation(pApp->glfvf.s2DT.sp, sz_aTex)) == -1) {
+            SDL_Log("Could not bind attribute \"%s\"\n", sz_aTex);
+            return 0x0e19;
+        }
+        if ((pApp->glfvf.s2DT._uMat = glGetUniformLocation(pApp->glfvf.s2DT.sp, sz_uMat)) == -1) {
+            SDL_Log("Could not bind uniform   \"%s\"\n", sz_uMat);
+            return 0x0e1a;
+        }
+        if ((pApp->glfvf.s2DT._uTex = glGetUniformLocation(pApp->glfvf.s2DT.sp, sz_uTex)) == -1) {
+            SDL_Log("Could not bind uniform   \"%s\"\n", sz_uTex);
+            return 0x0e1b;
+        }
+        link_ok = GL_FALSE;
+    }
+    /* Init 2D Colored Textured Shader */
+    {
+        if (!(pApp->glfvf.s2DCT.vs = create_shader("data/shader/2DCT.v.glsl", GL_VERTEX_SHADER))) {
+            print_log(pApp->glfvf.s2DCT.vs);
+            return 0x0e21;
+        }
+        if (!(pApp->glfvf.s2DCT.fs = create_shader("data/shader/2DCT.f.glsl", GL_FRAGMENT_SHADER))) {
+            print_log(pApp->glfvf.s2DCT.fs);
+            return 0x0e22;
+        }
+        pApp->glfvf.s2DCT.sp = glCreateProgram();
+        glAttachShader(pApp->glfvf.s2DCT.sp, pApp->glfvf.s2DCT.vs);
+        glAttachShader(pApp->glfvf.s2DCT.sp, pApp->glfvf.s2DCT.fs);
+        glLinkProgram (pApp->glfvf.s2DCT.sp);
+        glGetProgramiv(pApp->glfvf.s2DCT.sp, GL_LINK_STATUS, &link_ok);
+        if (!link_ok) {
+            print_log(pApp->glfvf.s2DCT.sp);
+            return 0x0e2f;
+        }
+        if ((pApp->glfvf.s2DCT._aPos = glGetAttribLocation(pApp->glfvf.s2DCT.sp, sz_aPos)) == -1) {
+            SDL_Log("Could not bind attribute \"%s\"\n", sz_aPos);
+            return 0x0e28;
+        }
+        if ((pApp->glfvf.s2DCT._aTex = glGetAttribLocation(pApp->glfvf.s2DCT.sp, sz_aTex)) == -1) {
+            SDL_Log("Could not bind attribute \"%s\"\n", sz_aTex);
+            return 0x0e29;
+        }
+        if ((pApp->glfvf.s2DCT._aCol = glGetAttribLocation(pApp->glfvf.s2DCT.sp, sz_aCol)) == -1) {
+            SDL_Log("Could not bind attribute \"%s\"\n", sz_aCol);
+            return 0x0e2a;
+        }
+        if ((pApp->glfvf.s2DCT._uMat = glGetUniformLocation(pApp->glfvf.s2DCT.sp, sz_uMat)) == -1) {
+            SDL_Log("Could not bind uniform   \"%s\"\n", sz_uMat);
+            return 0x0e2b;
+        }
+        if ((pApp->glfvf.s2DCT._uTex = glGetUniformLocation(pApp->glfvf.s2DCT.sp, sz_uTex)) == -1) {
+            SDL_Log("Could not bind uniform   \"%s\"\n", sz_uTex);
+            return 0x0e2c;
+        }
+        link_ok = GL_FALSE;
+    }
+    /* Init 2D Colored Text Shader (With Alpha Texture)*/
+    {
+        if (!(pApp->glfvf.s2DTXT.vs = create_shader("data/shader/2DTXT.v.glsl", GL_VERTEX_SHADER))) {
+            print_log(pApp->glfvf.s2DTXT.vs);
+            return 0x0e31;
+        }
+        if (!(pApp->glfvf.s2DTXT.fs = create_shader("data/shader/2DTXT.f.glsl", GL_FRAGMENT_SHADER))) {
+            print_log(pApp->glfvf.s2DTXT.fs);
+            return 0x0e32;
+        }
+        pApp->glfvf.s2DTXT.sp = glCreateProgram();
+        glAttachShader(pApp->glfvf.s2DTXT.sp, pApp->glfvf.s2DTXT.vs);
+        glAttachShader(pApp->glfvf.s2DTXT.sp, pApp->glfvf.s2DTXT.fs);
+        glLinkProgram (pApp->glfvf.s2DTXT.sp);
+        glGetProgramiv(pApp->glfvf.s2DTXT.sp, GL_LINK_STATUS, &link_ok);
+        if (!link_ok) {
+            print_log(pApp->glfvf.s2DTXT.sp);
+            return 0x0e3f;
+        }
+        if ((pApp->glfvf.s2DTXT._aPos = glGetAttribLocation(pApp->glfvf.s2DTXT.sp, sz_aPos)) == -1) {
+            SDL_Log("Could not bind attribute \"%s\"\n", sz_aPos);
+            return 0x0e38;
+        }
+        if ((pApp->glfvf.s2DTXT._aTex = glGetAttribLocation(pApp->glfvf.s2DTXT.sp, sz_aTex)) == -1) {
+            SDL_Log("Could not bind attribute \"%s\"\n", sz_aTex);
+            return 0x0e39;
+        }
+        if ((pApp->glfvf.s2DTXT._aCol = glGetAttribLocation(pApp->glfvf.s2DTXT.sp, sz_aCol)) == -1) {
+            SDL_Log("Could not bind attribute \"%s\"\n", sz_aCol);
+            return 0x0e3a;
+        }
+        if ((pApp->glfvf.s2DTXT._uPos = glGetUniformLocation(pApp->glfvf.s2DTXT.sp, sz_uPos)) == -1) {
+            SDL_Log("Could not bind uniform   \"%s\"\n", sz_uPos);
+            return 0x0e3b;
+        }
+        if ((pApp->glfvf.s2DTXT._uMat = glGetUniformLocation(pApp->glfvf.s2DTXT.sp, sz_uMat)) == -1) {
+            SDL_Log("Could not bind uniform   \"%s\"\n", sz_uMat);
+            return 0x0e3c;
+        }
+        if ((pApp->glfvf.s2DTXT._uTex = glGetUniformLocation(pApp->glfvf.s2DTXT.sp, sz_uTex)) == -1) {
+            SDL_Log("Could not bind uniform   \"%s\"\n", sz_uTex);
+            return 0x0e3d;
+        }
+        if ((pApp->glfvf.s2DTXT._uTsz = glGetUniformLocation(pApp->glfvf.s2DTXT.sp, sz_uTsz)) == -1) {
+            SDL_Log("Could not bind uniform   \"%s\"\n", sz_uTsz);
+            return 0x0e3e;
+        }
+        link_ok = GL_FALSE;
+    }
+
+
+    glGenBuffers(1, &pApp->glfvf.vbo_mouse);
+    glBindBuffer(GL_ARRAY_BUFFER, pApp->glfvf.vbo_mouse);
+    glBufferData(GL_ARRAY_BUFFER, sizeof(sv2DC)*6, NULL, GL_DYNAMIC_DRAW);
+
+    {
+        glGenBuffers(1, &pApp->glfvf.vbo_tt);
+        glBindBuffer(GL_ARRAY_BUFFER, pApp->glfvf.vbo_tt);
+        sv2DTXT pv[6];
+        pv[0].x = 0;    pv[0].y = 0;
+        pv[0].u = 0;    pv[0].v = 0;
+        pv[1].x = 2048; pv[1].y = 0;
+        pv[1].u = 2048; pv[1].v = 0;
+        pv[2].x = 0;    pv[2].y = 2048;
+        pv[2].u = 0;    pv[2].v = 2048;
+        pv[3]   = pv[2];pv[4]   = pv[1];
+        pv[5].x = 2048; pv[5].y = 2048;
+        pv[5].u = 2048; pv[5].v = 2048;
+        for(int i=0;i<6;++i) pv[i].abgr = 0xff1f3f7f;
+        glBufferData(GL_ARRAY_BUFFER, sizeof(sv2DTXT)*6, pv, GL_STATIC_DRAW);
+
+        glGenTextures(1, &pApp->glfvf.tex_tt);
+    }
+
+    {
+        glGenBuffers(1, &pApp->glfvf.vbo_text);
+        glBindBuffer(GL_ARRAY_BUFFER, pApp->glfvf.vbo_text);
+        glBufferData(GL_ARRAY_BUFFER, sizeof(sv2DTXT)*1024*6, NULL, GL_DYNAMIC_DRAW);
+    }
+
+
+    glEnable(GL_BLEND);
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+
+    return 0;
+}
+
+void resources_free(pA5App pApp) {
+
+    a5ft_cache_free(pApp->ftCache);
+    pApp->ftCache = NULL;
+    a5ft_free(pApp->ftLib);
+    pApp->ftLib = NULL;
+
+    glBindBuffer(GL_ARRAY_BUFFER, 0);
+    glUseProgram(0);
+
+    glDeleteProgram(pApp->glfvf.s2DTXT.sp);
+    glDeleteShader (pApp->glfvf.s2DTXT.vs);
+    glDeleteShader (pApp->glfvf.s2DTXT.fs);
+
+    glDeleteProgram(pApp->glfvf.s2DCT.sp);
+    glDeleteShader (pApp->glfvf.s2DCT.vs);
+    glDeleteShader (pApp->glfvf.s2DCT.fs);
+
+    glDeleteProgram(pApp->glfvf.s2DT.sp);
+    glDeleteShader (pApp->glfvf.s2DT.vs);
+    glDeleteShader (pApp->glfvf.s2DT.fs);
+
+    glDeleteProgram(pApp->glfvf.s2DC.sp);
+    glDeleteShader (pApp->glfvf.s2DC.vs);
+    glDeleteShader (pApp->glfvf.s2DC.fs);
+
+    glDeleteBuffers (1, &pApp->glfvf.vbo_mouse);
+    glDeleteTextures(1, &pApp->glfvf.tex_tt);
+    glDeleteBuffers (1, &pApp->glfvf.vbo_tt);
+
+}
+
+int loop(pA5App pApp) {
+    SDL_Event e;
+    while(pApp->bRun) {
+        while(pApp->bAnimation) {
+            while(SDL_PollEvent(&e)) {
+                event(pApp, &e);
+                if(!pApp->bRun) return pApp->iReturn;
+            }
+            animation(pApp);
+        }
+        if(SDL_WaitEvent(&e)) event(pApp, &e);
+    }
+    return pApp->iReturn;
+}
+
+int main(int argc, char *argv[]) {
+    int o=0;
+    SDL_LogSetAllPriority(SDL_LOG_PRIORITY_VERBOSE);
+    if(SDL_Init(SDL_INIT_TIMER|SDL_INIT_VIDEO|SDL_INIT_EVENTS)) {
+        SDL_Log("Unable to initialize SDL: %s", SDL_GetError());
+        return 0xfe01;
+    } else {
+        A5App App;
+        SDL_zero(App);
+        App.bRun = 1;
+        App.bAnimation = 1;
+
+        SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 3);
+        SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 3);
+        SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE);
+        SDL_GL_SetAttribute(SDL_GL_ALPHA_SIZE, 1);
+
+        if (!(App.wnd = SDL_CreateWindow(NULL, SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, 640, 480, SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE | SDL_WINDOW_SHOWN))) {
+            SDL_Log("Could not create window: %s\n", SDL_GetError());
+            SDL_Quit();
+            return 0xfe02;
+        }
+
+        if(!(App.glctx = SDL_GL_CreateContext(App.wnd))) {
+            SDL_Log("Could not create OpenGL context: %s\n", SDL_GetError());
+            SDL_DestroyWindow(App.wnd);
+            SDL_Quit();
+            return 0xfe03;
+        }
+
+        A5_GLEXT_Init();
+
+        glClearColor(0.3f,0.3f,0.3f,1);
+        glClear(GL_COLOR_BUFFER_BIT);
+
+        SDL_GL_SwapWindow(App.wnd);
+
+        {
+            int err;
+            if((err = resources_init(&App))) {
+                App.bRun = 0;
+                App.iReturn = 0xfe04;
+                SDL_Log("Resources init fail %x\n", err);
+                return 0xfe04;
+            }
+        }
+
+
+        o=loop(&App);
+
+        resources_free(&App);
+
+        SDL_GL_DeleteContext(App.glctx);
+        SDL_DestroyWindow(App.wnd);
+    }
+    SDL_Quit();
     return o;
 }
-
-LRESULT CALLBACK rWndProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
-    switch (uMsg) {
-        case WM_KEYDOWN:
-            if (wParam == VK_ESCAPE)
-                g_bRun = FALSE;
-            return 0;
-
-        case WM_PAINT:
-            return rWndProcPaint(hWnd);
-
-        case WM_ERASEBKGND:
-            return 0;
-
-        case WM_SIZE:
-            if(wParam != SIZE_MINIMIZED) {
-                g_nWidth = (INT)LOWORD(lParam);  // ширина рабочей области
-                g_nHeight = (INT)HIWORD(lParam); // высота рабочей области
-
-                return rWndProcSize(hWnd);
-            }
-            break;
-
-        case WM_SETFOCUS:
-            g_bActive = TRUE;
-            return 0;
-
-        case WM_KILLFOCUS:
-            g_bActive = FALSE;
-            return 0;
-
-        case WM_ACTIVATE:
-            g_bActive = (LOWORD(wParam) == WA_INACTIVE);
-            return 0;
-
-        case WM_CLOSE:
-            g_bRun = g_bActive = FALSE;
-            PostQuitMessage(0);
-            return 0;
-
-        case WM_CREATE:
-            return rWndProcCreate(hWnd);
-
-        case WM_DESTROY:
-            return rWndProcDestroy(hWnd);
-    }
-
-    return DefWindowProc(hWnd, uMsg, wParam, lParam);
-}
-
-
-INT     rAppInit() {
-    QueryPerformanceFrequency(&g_liQPF); // 3579545
-    QueryPerformanceCounter(&g_liQPC_old);
-    LOG_rStart();
-    LOG_rSetLvl(LOG_V);
-    SM_rStart();
-
-    INT o;
-
-    g_hInstance = (HINSTANCE)GetModuleHandle(NULL);
-
-
-    o = SM_rPush(&g_smAppState, rAppIRegisterClass, NULL);
-    if(o) return o;
-    o = SM_rPush(&g_smAppState, rAppICreateWindow, NULL);
-    if(o) return o;
-    o = SM_rPush(&g_smAppState, FT_I, NULL);
-    if(o) return o;
-    o = SM_rPush(&g_smAppState, rAppIIdle, NULL);
-    if(o) return o;
-
-
-    if((o = SM_rPush(&g_smOglState, rSOpenGL_BackGround, NULL))) {
-        SM_rPop(&g_smOglState, NULL);
-        return o;
-    }
-    if((o = SM_rPush(&g_smOglState, rSOpenGLStart, NULL))) {
-        SM_rPop(&g_smOglState, NULL);
-        return o;
-    }
-    if((o = SM_rPush(&g_smOglState, rSOpenGL_DrawText, NULL))) {
-        SM_rPop(&g_smOglState, NULL);
-        return o;
-    }
-
-
-
-    QueryPerformanceCounter(&g_liQPC);
-
-    g_liQPC.QuadPart -= g_liQPC_old.QuadPart;
-
-    LOG(g_uLogApp, LOG_I, TEXT("QueryPerformance\n\tQPF=%lld\n\tInit: %lld"), g_liQPF.QuadPart, g_liQPC.QuadPart);
-
-    g_liQPC.QuadPart *= 1000LL;
-    g_liQPC.QuadPart /= g_liQPF.QuadPart;
-    g_f1QPF = 1.f/(FLOAT)g_liQPF.LowPart;
-
-    LOG(g_uLogApp, LOG_I, TEXT("needed Time to Init app: %lldms"), g_liQPC.QuadPart);
-
-    return 0;
-}
-VOID    rAppDeInit() {
-
-    SM_rPopAll(&g_smAppState, NULL);
-
-    LOG_rFin();
-}
-INT     rAppLoop() {
-    MSG msg;
-
-    while (g_bRun) {
-        // обработаем сообщения из очереди сообщений
-        while (PeekMessage(&msg, g_hWnd, 0, 0, PM_REMOVE)) {
-            if (msg.message == WM_QUIT) {
-                g_bRun = 0;
-                break;
-            }
-            // TranslateMessage(&msg);
-            DispatchMessage(&msg);
-        }
-
-        if(g_bRun && g_bActive) g_bRun = !SM_rProcess(&g_smAppState, 0, NULL);
-
-    }
-    return msg.wParam;
-}
-
-INT     rAppIRegisterClass(LPSM lpsm, UINT uMsg, LPVOID ptr) {
-
-    if(uMsg == SM_MSG_PUSH) {
-        WNDCLASSEX wcx;
-        memset(&wcx, 0, sizeof(wcx));
-        wcx.cbSize        = sizeof(wcx);
-        wcx.style         = CS_HREDRAW | CS_VREDRAW | CS_OWNDC;
-        wcx.lpfnWndProc   = (WNDPROC)(rWndProc);
-        wcx.hInstance     = g_hInstance;
-        wcx.lpszClassName = g_clpszClassName;
-        wcx.hIcon         = LoadIcon(NULL, IDI_APPLICATION);
-        wcx.hCursor       = LoadCursor(NULL, IDC_ARROW);
-
-        ATOM o = RegisterClassEx(&wcx);
-        if(o) {
-            LOG(g_uLogApp, LOG_D, TEXT("RegisterClassEx OK!\n\tatom=%p"), o);
-        } else {
-            LOG(g_uLogApp, LOG_F, TEXT("RegisterClassEx FAIL!\n\terr=%p"), GetLastError());
-            return -1;
-        }
-    } else if(uMsg == SM_MSG_POP) {
-        UnregisterClass(g_clpszClassName, g_hInstance);
-    }
-    return 0;
-}
-INT     rAppICreateWindow(LPSM lpsm, UINT uMsg, LPVOID ptr) {
-    if(uMsg == SM_MSG_PUSH) {
-        RECT rc;
-        DWORD  dwStyle = WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX | WS_MAXIMIZEBOX | WS_SIZEBOX | WS_VISIBLE,
-            dwExStyle = WS_EX_APPWINDOW;
-        // выровняем окно по центру экрана
-        INT x = (GetSystemMetrics(SM_CXSCREEN) - g_nWidth ) / 2;
-        INT y = (GetSystemMetrics(SM_CYSCREEN) - g_nHeight) / 2;
-        rc.left   = x;
-        rc.right  = x + g_nWidth;
-        rc.top    = y;
-        rc.bottom = y + g_nHeight;
-        // подгоним размер окна под стили
-        AdjustWindowRectEx (&rc, dwStyle, FALSE, dwExStyle);
-        // создаем окно
-        g_hWnd = CreateWindowEx(dwExStyle, g_clpszClassName, TEXT("Empty title"), dwStyle, rc.left, rc.top, rc.right - rc.left, rc.bottom - rc.top, NULL, NULL, g_hInstance, NULL);
-        if (g_hWnd) {
-            LOG(g_uLogApp, LOG_D, TEXT("CreateWindowEx OK!\n\thwnd=%p"), g_hWnd);
-        } else {
-            LOG(g_uLogApp, LOG_F, TEXT("CreateWindowEx FAIL!\n\terr=%p"), GetLastError());
-            return -1;
-        }
-    } else if(uMsg == SM_MSG_POP) {
-        // удаляем окно
-        if (g_hWnd) {
-            DestroyWindow(g_hWnd);
-            LOG(g_uLogApp, LOG_D, TEXT("DestroyWindow OK!\n\thwnd=%p"), g_hWnd);
-            g_hWnd = NULL;
-        } else {
-            LOG(g_uLogApp, LOG_W, TEXT("DestroyWindow miss!\n\thwnd=%p"), g_hWnd);
-        }
-    }
-    return 0;
-}
-INT     rAppIIdle(LPSM lpsm, UINT uMsg, LPVOID ptr) {
-    if(uMsg == SM_MSG_PUSH) {
-    } else if(uMsg == SM_MSG_POP) {
-    } else {
-        rWndProcPaint(g_hWnd);
-        Sleep(1);
-    }
-    return 0;
-}
-
-INT     rWndProcCreate(HWND hWnd) {
-    PIXELFORMATDESCRIPTOR pfd;
-    INT iFormat;
-
-    // получим дескриптор контекста окна
-    g_hDC = GetDC(hWnd);
-    if(!g_hDC) {
-        LOG(g_uLogApp, LOG_F, TEXT("GetDC FAIL!\n\terr=%p"), GetLastError());
-        return -1;
-    }
-
-    INT iFormatMax = DescribePixelFormat(g_hDC, 1, sizeof(pfd), &pfd);
-    LOG(g_uLogApp, LOG_I, TEXT("PFD Count = %d"), iFormatMax);
-    for(iFormat = 1; iFormat <= iFormatMax; ++iFormat) {
-        iFormatMax = DescribePixelFormat(g_hDC, iFormat, sizeof(pfd), &pfd);
-
-        LOG(g_uLogApp, LOG_I, TEXT("PFD  [%d/%d]\n"
-            "  nSize =         %d/%d\n"
-            "  nVersion =      %d\n"
-            "  cColorBits =    %d R%d G%d B%d A%d\n"
-            "  cAccumBits =    %d R%d G%d B%d A%d\n"
-            "  cDepthBits =    %d\n"
-            "  cStencilBits =  %d\n"
-            "  cAuxBuffers =   %d\n"
-            "  dwVisibleMask = %p\n"
-            "  shifts =        R%d G%d B%d A%d%hs"),
-            iFormat, iFormatMax,
-            pfd.nSize, sizeof(pfd),
-            pfd.nVersion,
-            pfd.cColorBits, pfd.cRedBits, pfd.cGreenBits, pfd.cBlueBits, pfd.cAlphaBits,
-            pfd.cAccumBits, pfd.cAccumRedBits, pfd.cAccumGreenBits, pfd.cAccumBlueBits, pfd.cAccumAlphaBits,
-            pfd.cDepthBits,
-            pfd.cStencilBits,
-            pfd.cAuxBuffers,
-            pfd.dwVisibleMask,
-            pfd.cRedShift, pfd.cGreenShift, pfd.cBlueShift, pfd.cAlphaShift,
-            GL_INFOSPIXELFLAGS(pfd.dwFlags));
-    }
-
-
-    // описание формата пикселей
-    memset(&pfd, 0, sizeof(pfd));
-    pfd.nSize      = sizeof(pfd);
-    pfd.nVersion   = 1;
-    pfd.dwFlags    = PFD_DRAW_TO_WINDOW | PFD_SUPPORT_OPENGL | PFD_DOUBLEBUFFER;
-    pfd.iPixelType = PFD_TYPE_RGBA;
-    pfd.cColorBits = 32;
-    pfd.cDepthBits = 24;
-
-    // запросим формат пикселей, ближайший к описанному выше
-    iFormat = ChoosePixelFormat(g_hDC, &pfd);
-    if(!iFormat || !SetPixelFormat(g_hDC, iFormat, &pfd)) {
-        LOG(g_uLogApp, LOG_F, TEXT("Setting pixel format FAIL!\n\terr=%p"), GetLastError());
-        return -1;
-    }
-
-    // покажем окно на экране
-    // SetForegroundWindow(hWnd);
-    // SetFocus(hWnd);
-    // UpdateWindow(hWnd);
-
-    if(!(g_hRC = GL_rCreateCtx(g_hDC))) {
-        LOG(g_uLogApp, LOG_F, TEXT("Create OpenGL ctx FAIL!"));
-        return -1;
-    }
-    if(GL_rInitExtensions()) {
-        LOG(g_uLogApp, LOG_F, TEXT("Init OpenGL extensions FAIL!"));
-        return -1;
-    }
-
-    return 0;
-}
-INT     rWndProcDestroy(HWND hWnd) {
-
-    SM_rPopAll(&g_smOglState, NULL);
-
-    // удаляем контекст рендеринга
-    if (g_hRC) {
-        wglMakeCurrent(NULL, NULL);
-        wglDeleteContext(g_hRC);
-        LOG(g_uLogApp, LOG_D, TEXT("wglDeleteContext OK!\n\thglrc=%p"), g_hRC);
-        g_hRC = NULL;
-    } else {
-        LOG(g_uLogApp, LOG_W, TEXT("wglDeleteContext miss!\n\thglrc=%p"), g_hRC);
-    }
-
-    // освобождаем контекст окна
-    if (g_hDC) {
-        ReleaseDC(hWnd, g_hDC);
-        LOG(g_uLogApp, LOG_D, TEXT("ReleaseDC OK!\n\thwnd=%p hdc=%p"), hWnd, g_hDC);
-        g_hDC = NULL;
-    } else {
-        LOG(g_uLogApp, LOG_W, TEXT("ReleaseDC miss!\n\thwnd=%p hdc=%p"), hWnd, g_hDC);
-    }
-    return 0;
-}
-
-
-INT     rWndProcSize(HWND hWnd) {
-    OPENGL_CALL(glViewport(0, 0, g_nWidth, g_nHeight));
-
-    OPENGL_CHECK_FOR_ERRORS();
-    return 0;
-}
-INT     rWndProcPaint(HWND hWnd) {
-    QueryPerformanceCounter(&g_liQPC_old);
-    if(g_bAnimating) {
-        OPENGL_CALL(glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT));
-        SM_rProcessAll(&g_smOglState, 0, NULL);
-        SwapBuffers(g_hDC);
-    }
-    ValidateRect(hWnd, NULL);
-    QueryPerformanceCounter(&g_liQPC);
-    g_uLastFrame = g_liQPC.LowPart - g_liQPC_old.LowPart;
-    g_fLastFrame = g_f1QPF * (FLOAT)g_uLastFrame;
-    return 0;
-}
-
-INT     rSOpenGL_BackGround(LPSM lpsm, UINT uMsg, LPVOID ptr) {
-    static GLuint iSP = 0;
-    static GLuint iVS = 0;
-    static GLuint iFS = 0;
-    static GLuint iVAO = 0;
-    static GLuint iVBO = 0;
-
-    if(uMsg == SM_MSG_PUSH) {
-        struct {
-            FLOAT x, y;
-            FLOAT r, g, b, a;
-        } m[6];
-
-        m[1].x = m[4].x = m[5].x = m[0].y = m[1].y = m[4].y =  1.0f;
-        m[0].x = m[2].x = m[3].x = m[2].y = m[3].y = m[5].y = -1.0f;
-
-
-        m[0].r = m[1].r = m[2].r = m[3].r = m[4].r = m[5].r = 1.0f;
-        m[0].a = m[1].a = m[2].a = m[3].a = m[4].a = m[5].a = 1.0f;
-
-        m[0].g = (FLOAT)0xFD/(FLOAT)0xFF;
-        m[0].b = (FLOAT)0xE7/(FLOAT)0xFF;
-
-        m[1].g = m[4].g = (FLOAT)0xD7/(FLOAT)0xFF;
-        m[1].b = m[4].b = (FLOAT)0x40/(FLOAT)0xFF;
-
-        m[2].g = m[3].g = (FLOAT)0xD1/(FLOAT)0xFF;
-        m[2].b = m[3].b = (FLOAT)0x80/(FLOAT)0xFF;
-
-        m[5].g = (FLOAT)0xCC/(FLOAT)0xFF;
-        m[5].b = (FLOAT)0xBC/(FLOAT)0xFF;
-
-        // FFFDE7
-        // FFD740
-        // FFD180
-        // FFCCBC
-
-
-        if(!(iVS = GL_rCreateShaderFromFileA(GL_VERTEX_SHADER, "data/2dRGBA.v.glsl"))) {
-            return -1;
-        }
-        if(!(iFS = GL_rCreateShaderFromFileA(GL_FRAGMENT_SHADER, "data/2dRGBA.f.glsl"))) {
-            return -1;
-        }
-        GLuint u[3]; u[0] = iVS; u[1] = iFS; u[2] = 0;
-        if(!(iSP = GL_rCreateProgramm(u))) {
-            return -1;
-        }
-        OPENGL_CALL(glUseProgram(iSP));
-        // создадим и используем Vertex Array Object (VAO)
-        OPENGL_CALL(glGenVertexArrays(1, &iVAO));
-        OPENGL_CALL(glBindVertexArray(iVAO));
-        // создадим и используем Vertex Buffer Object (VBO)
-        OPENGL_CALL(glGenBuffers(1, &iVBO));
-        OPENGL_CALL(glBindBuffer(GL_ARRAY_BUFFER, iVBO));
-        // заполним VBO данными треугольника
-        OPENGL_CALL(glBufferData(GL_ARRAY_BUFFER, sizeof(FLOAT)*6*6, m, GL_STATIC_DRAW));
-        GLint iGLSL_pos, iGLSL_color;
-        // получим позицию атрибута 'in_pos' из шейдера
-        OPENGL_CALL(iGLSL_pos = glGetAttribLocation(iSP, "in_pos"));
-        if (iGLSL_pos != -1) {
-            // назначим на атрибут параметры доступа к VBO
-            OPENGL_CALL(glVertexAttribPointer(iGLSL_pos, 2, GL_FLOAT, GL_FALSE, sizeof(FLOAT)*6, (const GLvoid*)0));
-            // разрешим использование атрибута
-            OPENGL_CALL(glEnableVertexAttribArray(iGLSL_pos));
-        }
-        // получим позицию атрибута 'in_color' из шейдера
-        iGLSL_color = glGetAttribLocation(iSP, "in_color");
-        if (iGLSL_color != -1)  {
-            // назначим на атрибут параметры доступа к VBO
-            OPENGL_CALL(glVertexAttribPointer(iGLSL_color, 4, GL_FLOAT, GL_FALSE, sizeof(FLOAT)*6, (const GLvoid*)(sizeof(FLOAT)*2)));
-            // разрешим использование атрибута
-            OPENGL_CALL(glEnableVertexAttribArray(iGLSL_color));
-        }
-
-    } else if(uMsg == SM_MSG_POP) {
-        OPENGL_CALL(glBindBuffer(GL_ARRAY_BUFFER, 0));
-        OPENGL_CALL(glDeleteBuffers(1, &iVBO));
-        OPENGL_CALL(glBindVertexArray(0));
-        OPENGL_CALL(glDeleteVertexArrays(1, &iVAO));
-        OPENGL_CALL(glUseProgram(0));
-        OPENGL_CALL(glDeleteProgram(iSP));
-        OPENGL_CALL(glDeleteShader(iVS));
-        OPENGL_CALL(glDeleteShader(iFS));
-    } else {
-        OPENGL_CALL(glUseProgram(iSP));
-        OPENGL_CALL(glBindVertexArray(iVAO));
-        OPENGL_CALL(glBindBuffer(GL_ARRAY_BUFFER, iVBO));
-        OPENGL_CALL(glDrawArrays(GL_TRIANGLES, 0, 6));
-    }
-    return 0;
-}
-
-INT     rSOpenGL_DrawText(LPSM lpsm, UINT uMsg, LPVOID ptr) {
-    static GLuint iSP = 0;
-    static GLuint iVS = 0;
-    static GLuint iFS = 0;
-    static GLuint iVAO = 0;
-    static GLuint iVBO = 0;
-    static GLuint iTEX = 0;
-
-    if(uMsg == SM_MSG_PUSH) {
-        struct {
-            FLOAT x, y, u, v;
-            FLOAT r, g, b, a;
-        } m[6];
-
-        m[1].x = m[4].x = m[5].x = m[0].y = m[1].y = m[4].y =  16.0f;
-        m[0].x = m[2].x = m[3].x = m[2].y = m[3].y = m[5].y = 528.0f;
-
-
-        m[0].r = m[1].r = m[2].r = m[3].r = m[4].r = m[5].r = 1.0f;
-        m[0].g = m[1].g = m[2].g = m[3].g = m[4].g = m[5].g = 1.0f;
-        m[0].b = m[1].b = m[2].b = m[3].b = m[4].b = m[5].b = 1.0f;
-        m[0].a = m[1].a = m[2].a = m[3].a = m[4].a = m[5].a = 1.0f;
-
-        // FFFDE7
-        // FFD740
-        // FFD180
-        // FFCCBC
-
-
-
-
-        if(!(iVS = GL_rCreateShaderFromFileA(GL_VERTEX_SHADER, "data/2dTexRGBA.v.glsl"))) {
-            return -1;
-        }
-        if(!(iFS = GL_rCreateShaderFromFileA(GL_FRAGMENT_SHADER, "data/2dTexRGBA.f.glsl"))) {
-            return -1;
-        }
-        GLuint u[3]; u[0] = iVS; u[1] = iFS; u[2] = 0;
-        if(!(iSP = GL_rCreateProgramm(u))) {
-            return -1;
-        }
-
-        OPENGL_CALL(glGenTextures(1, &iTEX));
-        OPENGL_CALL(glBindTexture(GL_TEXTURE_2D, iTEX));
-        OPENGL_CALL(glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR));
-        OPENGL_CALL(glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR));
-
-        OPENGL_CALL(glUseProgram(iSP));
-        // создадим и используем Vertex Array Object (VAO)
-        OPENGL_CALL(glGenVertexArrays(1, &iVAO));
-        OPENGL_CALL(glBindVertexArray(iVAO));
-        // создадим и используем Vertex Buffer Object (VBO)
-        OPENGL_CALL(glGenBuffers(1, &iVBO));
-        OPENGL_CALL(glBindBuffer(GL_ARRAY_BUFFER, iVBO));
-        // заполним VBO данными треугольника
-        OPENGL_CALL(glBufferData(GL_ARRAY_BUFFER, sizeof(FLOAT)*6*8, m, GL_STATIC_DRAW));
-        GLint iGLSL_in_pos, iGLSL_in_tex, iGLSL_in_color;
-        GLint iGLSL_u_tex0, iGLSL_u_VP;
-
-        OPENGL_CALL(iGLSL_in_pos = glGetAttribLocation(iSP, "in_pos"));
-        if (iGLSL_in_pos != -1) {
-            OPENGL_CALL(glVertexAttribPointer(iGLSL_in_pos, 2, GL_FLOAT, GL_FALSE, sizeof(FLOAT)*8, (const GLvoid*)0));
-            OPENGL_CALL(glEnableVertexAttribArray(iGLSL_in_pos));
-        }
-        OPENGL_CALL(iGLSL_in_tex = glGetAttribLocation(iSP, "in_texcoord"));
-        if (iGLSL_in_tex != -1) {
-            OPENGL_CALL(glVertexAttribPointer(iGLSL_in_tex, 2, GL_FLOAT, GL_FALSE, sizeof(FLOAT)*8, (const GLvoid*)(sizeof(FLOAT)*2)));
-            OPENGL_CALL(glEnableVertexAttribArray(iGLSL_in_tex));
-        }
-        OPENGL_CALL(iGLSL_in_color = glGetAttribLocation(iSP, "in_color"));
-        if (iGLSL_in_color != -1)  {
-            OPENGL_CALL(glVertexAttribPointer(iGLSL_in_color, 4, GL_FLOAT, GL_FALSE, sizeof(FLOAT)*6, (const GLvoid*)(sizeof(FLOAT)*4)));
-            OPENGL_CALL(glEnableVertexAttribArray(iGLSL_in_color));
-        }
-        OPENGL_CALL(iGLSL_u_tex0 = glGetUniformLocation(iSP, "u_tex0"));
-        if (iGLSL_u_tex0 != -1)  {
-        }
-        OPENGL_CALL(iGLSL_u_VP = glGetUniformLocation(iSP, "u_VP"));
-        if (iGLSL_u_VP != -1)  {
-        }
-
-    } else if(uMsg == SM_MSG_POP) {
-        OPENGL_CALL(glDeleteTextures(1, &iTEX));
-        OPENGL_CALL(glBindBuffer(GL_ARRAY_BUFFER, 0));
-        OPENGL_CALL(glDeleteBuffers(1, &iVBO));
-        OPENGL_CALL(glBindVertexArray(0));
-        OPENGL_CALL(glDeleteVertexArrays(1, &iVAO));
-        OPENGL_CALL(glUseProgram(0));
-        OPENGL_CALL(glDeleteProgram(iSP));
-        OPENGL_CALL(glDeleteShader(iVS));
-        OPENGL_CALL(glDeleteShader(iFS));
-    } else {
-        OPENGL_CALL(glUseProgram(iSP));
-        OPENGL_CALL(glActiveTexture(GL_TEXTURE0));
-        // OPENGL_CALL(glUniform1i(uniform_mytexture, /*GL_TEXTURE*/0));
-        OPENGL_CALL(glBindTexture(GL_TEXTURE_2D, iTEX));
-        OPENGL_CALL(glBindVertexArray(iVAO));
-
-        OPENGL_CALL(glBindBuffer(GL_ARRAY_BUFFER, iVBO));
-        OPENGL_CALL(glDrawArrays(GL_TRIANGLES, 0, 6));
-    }
-    return 0;
-}
-
-INT     rSOpenGLStart(LPSM lpsm, UINT uMsg, LPVOID ptr) {
-    static GLuint iGL_ShaderProgram = 0;
-    static GLuint iGL_VertexShader = 0;
-    static GLuint iGL_FragmentShader = 0;
-    static GLuint iGL_VAO = 0, iGL_VBO = 0;
-
-    // количество вершин в нашей геометрии, у нас простой треугольник
-    static const int MESH_VERTEX_COUNT = 3;
-
-    // размер одной вершины меша в байтах - 6 float на позицию и на цвет вершины
-    static const int VERTEX_SIZE = 6 * sizeof(float);
-
-    // смещения данных внутри вершины
-    static const int VERTEX_POSITION_OFFSET = 0;
-    static const int VERTEX_COLOR_OFFSET    = 2 * sizeof(float);
-    // подготовим данные для вывода треугольника, всего 3 вершины
-
-
-    if(uMsg == SM_MSG_PUSH) {
-        FLOAT triangleMesh[3 * 6] = {
-            -0.5f, -0.5f,  1.0f, 0.0f, 0.0f, 1.0f,
-             0.0f,  0.5f,  0.0f, 1.0f, 0.0f, 1.0f,
-             0.5f, -0.5f,  0.0f, 0.0f, 1.0f, 1.0f,
-        };
-
-        OPENGL_CALL(glClearColor(0.0f, 0.0f, 0.0f, 1.0f));
-        OPENGL_CALL(glClearDepth(1.0f));
-
-        if(!(iGL_VertexShader = GL_rCreateShaderFromFileA(GL_VERTEX_SHADER, "0.vs"))) {
-            return -1;
-        }
-        if(!(iGL_FragmentShader = GL_rCreateShaderFromFileA(GL_FRAGMENT_SHADER, "0.fs"))) {
-            return -1;
-        }
-        GLuint _ush[3];
-        _ush[0] = iGL_VertexShader;
-        _ush[1] = iGL_FragmentShader;
-        _ush[2] = 0;
-        if(!(iGL_ShaderProgram = GL_rCreateProgramm(_ush))) {
-            return -1;
-        }
-
-        OPENGL_CALL(glUseProgram(iGL_ShaderProgram));
-
-        // создадим и используем Vertex Array Object (VAO)
-        OPENGL_CALL(glGenVertexArrays(1, &iGL_VAO));
-        OPENGL_CALL(glBindVertexArray(iGL_VAO));
-
-        // создадим и используем Vertex Buffer Object (VBO)
-        OPENGL_CALL(glGenBuffers(1, &iGL_VBO));
-        OPENGL_CALL(glBindBuffer(GL_ARRAY_BUFFER, iGL_VBO));
-
-
-        // заполним VBO данными треугольника
-        OPENGL_CALL(glBufferData(GL_ARRAY_BUFFER, MESH_VERTEX_COUNT * VERTEX_SIZE,
-            triangleMesh, GL_STATIC_DRAW));
-
-        GLint positionLocation, colorLocation;
-
-        // получим позицию атрибута 'position' из шейдера
-        positionLocation = glGetAttribLocation(iGL_ShaderProgram, "position");
-        if (positionLocation != -1) {
-            // назначим на атрибут параметры доступа к VBO
-            OPENGL_CALL(glVertexAttribPointer(positionLocation, 2, GL_FLOAT, GL_FALSE,
-                VERTEX_SIZE, (const GLvoid*)VERTEX_POSITION_OFFSET));
-            // разрешим использование атрибута
-            OPENGL_CALL(glEnableVertexAttribArray(positionLocation));
-        }
-
-        // получим позицию атрибута 'color' из шейдера
-        colorLocation = glGetAttribLocation(iGL_ShaderProgram, "color");
-        if (colorLocation != -1)  {
-            // назначим на атрибут параметры доступа к VBO
-            OPENGL_CALL(glVertexAttribPointer(colorLocation, 4, GL_FLOAT, GL_FALSE,
-                VERTEX_SIZE, (const GLvoid*)VERTEX_COLOR_OFFSET));
-            // разрешим использование атрибута
-            OPENGL_CALL(glEnableVertexAttribArray(colorLocation));
-        }
-
-    } else if(uMsg == SM_MSG_POP) {
-        OPENGL_CALL(glBindBuffer(GL_ARRAY_BUFFER, 0));
-        OPENGL_CALL(glDeleteBuffers(1, &iGL_VBO));
-
-        OPENGL_CALL(glBindVertexArray(0));
-        OPENGL_CALL(glDeleteVertexArrays(1, &iGL_VAO));
-
-        OPENGL_CALL(glUseProgram(0));
-        OPENGL_CALL(glDeleteProgram(iGL_ShaderProgram));
-
-        OPENGL_CALL(glDeleteShader(iGL_VertexShader));
-        OPENGL_CALL(glDeleteShader(iGL_FragmentShader));
-    } else {
-        OPENGL_CALL(glUseProgram(iGL_ShaderProgram));
-        OPENGL_CALL(glBindVertexArray(iGL_VAO));
-
-        OPENGL_CALL(glBindBuffer(GL_ARRAY_BUFFER, iGL_VBO));
-        // OPENGL_CALL(glBufferData(GL_ARRAY_BUFFER, MESH_VERTEX_COUNT * VERTEX_SIZE, NULL, GL_STATIC_DRAW));
-
-        PFLOAT pF = NULL;
-
-        OPENGL_CALL(pF = (PFLOAT)glMapBuffer(GL_ARRAY_BUFFER, GL_WRITE_ONLY));
-
-        static FLOAT ff = 0.f;
-        for(int i = 0; i < MESH_VERTEX_COUNT; i++) {
-
-            pF[i*6 + 0] = (((FLOAT)(((UINT)(ff*100.f))%501))-250.f)*0.001f;
-            pF[i*6 + 1] = -(((FLOAT)(((UINT)(ff*100.f))%501))-250.f)*0.001f;
-            pF[i*6 + 2] = pF[i*6 + 3] = pF[i*6 + 4] = ff;
-            pF[i*6 + 5] = 1.f;
-        }
-
-        pF[6] = -0.5f;
-        pF[7] = -0.5f;
-        pF[12] = 0.5f;
-        pF[13] = -0.5f;
-
-        glUnmapBuffer(GL_ARRAY_BUFFER);
-        ff += 0.01f;
-
-        OPENGL_CALL(glDrawArrays(GL_TRIANGLES, 0, MESH_VERTEX_COUNT));
-        OPENGL_CHECK_FOR_ERRORS();
-    }
-    return 0;
-}
-
-
-

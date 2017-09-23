@@ -1,33 +1,34 @@
-#ifndef _H_FT
-#define _H_FT
+#ifndef _a5_ft_h
+#define _a5_ft_h
 
-#include "log.h"
-#include "sm.h"
+#include <SDL2/SDL_stdinc.h>
 
-extern PBYTE           FT_A8CACHE;
-extern UINT            FT_A8CACHE_SIZE;
-extern BOOL            FT_A8CACHE_UPDATE;
+typedef struct sA5Glyph {
+    Uint16 G, U; // Номер глифа, Unicode
+    Uint16 x, y; // Позиция в текстуре
+    Sint8  X, Y; // Отступы текстуры при рисовке
+    Uint8  w, h; // Размеры в текстуре
+    Uint8  H, F; // Высота, номер фонта
+    Uint8  A, _; // Отступ след символа, ??? хз чё, не придумал ещё
+} sA5Glyph, *psA5Glyph;
 
-typedef struct __FT_GLYPH {
-    WORD G, U; // Номер глифа, Unicode
-    WORD x, y; // Позиция в текстуре
-    CHAR X, Y; // Отступы текстуры при рисовке
-    BYTE w, h; // Размеры в текстуре
-    BYTE H, F, A, _; // Высота, фонт, отступ след символа, ??? хз чё, не придумал ещё
-} FT_GLYPH, *PFT_GLYPH, *LPFT_GLYPH;
+int  a5ft_init(void **pLib);
+void a5ft_free(void  *pLib);
 
+void a5ft_cache_init (void *pLib, void **pCache, int size, int maxFonts);
+void a5ft_cache_free (void *pCache);
+void a5ft_cache_clear(void *pCache);
+int  a5ft_cache_update(void *pCache, int i);
 
-INT         FT_I(LPSM lpsm, UINT uMsg, LPVOID ptr);
+int  a5ft_new_font_from_file(void *pCache, const char *fName);
+int  a5ft_new_font_from_mem (void *pCache, void *pMem, int size);
+void a5ft_del_font          (void *pCache, int iFont);
 
-VOID        FT_rClean();
-UINT        FT_rNewFaceA(LPCSTR fName);
-UINT        FT_rNewFaceFromMem(LPBYTE pMem, INT size);
+psA5Glyph a5ft_new_glyph(void *pCache, int iFont, int iGlyph, int H);
+psA5Glyph a5ft_get_glyph(void *pCache, int iFont, int iGlyph, int H);
 
-LPFT_GLYPH  FT_rNewChar(UINT iFace, UINT iUChar, UINT size);
-LPFT_GLYPH  FT_rGetChar(UINT iFace, UINT iUChar, UINT size);
-
-LPFT_GLYPH  FT_rNewGlyph(UINT iFace, UINT iGlyph, UINT size);
-LPFT_GLYPH  FT_rGetGlyph(UINT iFace, UINT iGlyph, UINT size);
+psA5Glyph a5ft_new_char(void *pCache, int iFont, int iChar, int H);
+psA5Glyph a5ft_get_char(void *pCache, int iFont, int iChar, int H);
 
 
 #endif

@@ -5,10 +5,15 @@
 			"path": "."
 		},
 		{
-			"path": "F:\\Z"
+			"name": "SDL",
+			"path": "F:\\Z\\SDK\\SDL2-2.0.5\\i686-w64-mingw32"
 		},
 		{
 			"path": "C:\\MinGW"
-		}
+		},
+		{
+			"path": "F:\\Z"
+		},
+
 	]
 }

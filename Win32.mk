@@ -5,9 +5,17 @@ AR := $(TOOL_AR)
 
 OUT_NAME := a.exe
 
-CPPFLAGS := -DDEBUG -D_DEBUG -DUNICODE -D_UNICODE
-CFLAGS := -O0 -g3 -Wall -std=c99
-LDFLAGS := -lOpenGL32 -lGDI32 -lft28
+PATH_SDL := ../../SDK/SDL2-2.0.5/i686-w64-mingw32/
+
+CPPFLAGS := -D_DEBUG
+CFLAGS := -O0 -g3 -Wall -std=c11 \
+	"-I$(PATH_SDL)include"
+LDFLAGS := -lmingw32 -lSDL2main -lSDL2 -lOpenGL32 \
+	-mwindows -Wl,--no-undefined \
+	"-L$(PATH_SDL)lib" \
+	-lft28
+
+# -lmingw32 -lSDL2main -lSDL2_test -lSDL2  -mwindows  -Wl,--no-undefined -lm -ldinput8 -ldxguid -ldxerr8 -luser32 -lgdi32 -lwinmm -limm32 -lole32 -loleaut32 -lshell32 -lversion -luuid -static-libgcc
 
 DIR_INCLUDES := \
 	src \
@@ -18,14 +26,12 @@ DIR_LIBS := \
 
 SRC_FILES := \
 	src/main.c \
-	src/log.c \
-	src/sm.c \
-	src/utilities.c \
+	src/utils.c \
 	src/gl.c \
 	src/ft.c
 
 OBJECTS := $(addprefix obj/, $(addsuffix .o, $(basename $(SRC_FILES))))
-OBJECTS_DIRS := $(sort $(dir $(OBJECTS)))
+OBJECTS_DIRS := $(sort $(dir $(OBJECTS) ))
 
 CFLAGS  += $(addprefix -I, $(DIR_INCLUDES))
 LDFLAGS += $(addprefix -L, $(DIR_LIBS))
