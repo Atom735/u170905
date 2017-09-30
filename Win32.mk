@@ -25,10 +25,8 @@ DIR_LIBS := \
     libs
 
 SRC_FILES := \
-	src/main.c \
-	src/utils.c \
-	src/gl.c \
-	src/ft.c
+	src/a5_app.c \
+	src/a5_err.c
 
 OBJECTS := $(addprefix obj/, $(addsuffix .o, $(basename $(SRC_FILES))))
 OBJECTS_DIRS := $(sort $(dir $(OBJECTS) ))
