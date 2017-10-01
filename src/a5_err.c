@@ -1,3 +1,4 @@
+#include "a5_app.h"
 #include "a5_err.h"
 
 const char *A5ERR(int err) {
