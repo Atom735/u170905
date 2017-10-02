@@ -36,7 +36,7 @@ GLuint A5GL_2DTXT_CreateVBO_S(GLuint uSize, pA5V_2DTXT pBuf);
 GLvoid A5GL_2DTXT_DrawBegin(pA5GLV_2DTXT p, GLuint uScreenWidth, GLuint uScreenHeight);
 GLvoid A5GL_2DTXT_DrawSetTex(pA5GLV_2DTXT p, GLuint uTex, GLuint uTexSize);
 GLvoid A5GL_2DTXT_DrawVbo(pA5GLV_2DTXT p, GLint iPosX, GLint iPosY, GLuint uVBO, GLuint uOffset, GLuint uCount);
-GLuint A5GL_2DTXT_PrepareVboText(GLuint uVBO, GLuint uOffset, GLuint uCount, pA5S_TextSettings pSettings);
+// GLuint A5GL_2DTXT_PrepareVboText(GLuint uVBO, GLuint uOffset, GLuint uCount, pA5S_TextSettings pSettings);
 
 /* GL_VERSION_1_2 */
 extern PFNGLDRAWRANGEELEMENTSPROC                      glDrawRangeElements;

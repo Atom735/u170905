@@ -73,9 +73,9 @@ int  A5APP_Loop(pA5S_App pApp) {
     return pApp->iReturn;
 }
 int  A5APP_ResInit(pA5S_App pApp) {
-    pApp->FT_Lib = A5FT_Init();
-    pApp->FT_Cache = A5FT_CacheInit(pApp->FT_Lib, 1<<11, 2);
-    A5FT_FontNewFromFile(pApp->FT_Cache, "data/fonts/RobotoSlab-Regular.ttf");
+    // pApp->FT_Lib = A5FT_Init();
+    // pApp->FT_Cache = A5FT_CacheInit(pApp->FT_Lib, 1<<11, 2);
+    // A5FT_FontNewFromFile(pApp->FT_Cache, "data/fonts/RobotoSlab-Regular.ttf");
 
     A5GL_2DTXT_Create(&pApp->gl.s2DTXT);
 
@@ -121,9 +121,9 @@ void A5APP_ResFree(pA5S_App pApp) {
 
     A5GL_2DTXT_Release(&pApp->gl.s2DTXT);
 
-    A5FT_CacheFree(pApp->FT_Cache);
+    // A5FT_CacheFree(pApp->FT_Cache);
     pApp->FT_Cache = NULL;
-    A5FT_Free(pApp->FT_Lib);
+    // A5FT_Free(pApp->FT_Lib);
     pApp->FT_Lib = NULL;
 }
 
@@ -146,11 +146,13 @@ void A5APP_Evnt(pA5S_App pApp) {
                     return;
                 }
                 case SDL_SCANCODE_MINUS: {
+                    if(pApp->iDbgState == 1) pApp->gl.uib_DBG_FT_Cache = !pApp->gl.uib_DBG_FT_Cache;
                     if(pApp->iDbgState == 2) --pApp->gl.hsz_DBG_CLIPBOARD;
                     if(pApp->gl.hsz_DBG_CLIPBOARD < 4) pApp->gl.hsz_DBG_CLIPBOARD=4;
                     return;
                 }
                 case SDL_SCANCODE_EQUALS: {
+                    if(pApp->iDbgState == 1) pApp->gl.uib_DBG_FT_Cache = !pApp->gl.uib_DBG_FT_Cache;
                     if(pApp->iDbgState == 2) ++pApp->gl.hsz_DBG_CLIPBOARD;
                     return;
                 }
@@ -182,54 +184,55 @@ void A5APP_Idle(pA5S_App pApp) {
     int ms_x, ms_y;
     SDL_GetMouseState(&ms_x, &ms_y);
 
-    if(A5FT_CacheUpdate(pApp->FT_Cache, 0)) {
-        glBindTexture(GL_TEXTURE_2D, pApp->gl.tex_FT_Cache);
-        glTexImage2D(GL_TEXTURE_2D, 0, GL_RED, A5FT_CacheGetSize(pApp->FT_Cache), A5FT_CacheGetSize(pApp->FT_Cache), 0, GL_RED, GL_UNSIGNED_BYTE, pApp->FT_Cache);
-        glBindTexture(GL_TEXTURE_2D, pApp->gl.tex_DBG_FT_Cache);
-        glTexImage2D(GL_TEXTURE_2D, 0, GL_RED, A5FT_CacheGetSize(pApp->FT_Cache), A5FT_CacheGetSize(pApp->FT_Cache), 0, GL_RED, GL_UNSIGNED_BYTE, (GLubyte*)pApp->FT_Cache+A5FT_CacheGetSize(pApp->FT_Cache)*A5FT_CacheGetSize(pApp->FT_Cache));
-
-    }
+    // if(A5FT_CacheUpdate(pApp->FT_Cache, 0)) {
+    //     glBindTexture(GL_TEXTURE_2D, pApp->gl.tex_FT_Cache);
+    //     glTexImage2D(GL_TEXTURE_2D, 0, GL_RED, A5FT_CacheGetSize(pApp->FT_Cache), A5FT_CacheGetSize(pApp->FT_Cache), 0, GL_RED, GL_UNSIGNED_BYTE, pApp->FT_Cache);
+    //     glBindTexture(GL_TEXTURE_2D, pApp->gl.tex_DBG_FT_Cache);
+    //     glTexImage2D(GL_TEXTURE_2D, 0, GL_RED, A5FT_CacheGetSize(pApp->FT_Cache), A5FT_CacheGetSize(pApp->FT_Cache), 0, GL_RED, GL_UNSIGNED_BYTE, (GLubyte*)pApp->FT_Cache+A5FT_CacheGetSize(pApp->FT_Cache)*A5FT_CacheGetSize(pApp->FT_Cache));
+    // }
 
     glClearColor(0.3f,0.3f,0.3f,1.0f);
     glClear(GL_COLOR_BUFFER_BIT);
 
-    if(pApp->iDbgState == 1) {
-        glClearColor(0.3f,0.3f,0.3f,1.0f);
-        glClear(GL_COLOR_BUFFER_BIT);
-        A5GL_2DTXT_DrawBegin(&pApp->gl.s2DTXT, ds_w, ds_h);
-        A5GL_2DTXT_DrawSetTex(&pApp->gl.s2DTXT, pApp->gl.tex_DBG_FT_Cache, A5FT_CacheGetSize(pApp->FT_Cache));
-        A5GL_2DTXT_DrawVbo(&pApp->gl.s2DTXT, 8-ms_x*8, 8-ms_y*8, pApp->gl.vbo_DBG_FT_Cache, 1, 1);
-        A5GL_2DTXT_DrawSetTex(&pApp->gl.s2DTXT, pApp->gl.tex_FT_Cache, A5FT_CacheGetSize(pApp->FT_Cache));
-        A5GL_2DTXT_DrawVbo(&pApp->gl.s2DTXT, 8-ms_x*8, 8-ms_y*8, pApp->gl.vbo_DBG_FT_Cache, 0, 1);
-    } else if(pApp->iDbgState == 2) {
-        glClearColor(0.3f,0.3f,0.3f,1.0f);
-        glClear(GL_COLOR_BUFFER_BIT);
-        A5GL_2DTXT_DrawBegin(&pApp->gl.s2DTXT, ds_w, ds_h);
-        A5GL_2DTXT_DrawSetTex(&pApp->gl.s2DTXT, pApp->gl.tex_FT_Cache, A5FT_CacheGetSize(pApp->FT_Cache));
+    // if(pApp->iDbgState == 1) {
+    //     glClearColor(0.3f,0.3f,0.3f,1.0f);
+    //     glClear(GL_COLOR_BUFFER_BIT);
+    //     A5GL_2DTXT_DrawBegin(&pApp->gl.s2DTXT, ds_w, ds_h);
+    //     if(pApp->gl.uib_DBG_FT_Cache) {
+    //         A5GL_2DTXT_DrawSetTex(&pApp->gl.s2DTXT, pApp->gl.tex_DBG_FT_Cache, A5FT_CacheGetSize(pApp->FT_Cache));
+    //         A5GL_2DTXT_DrawVbo(&pApp->gl.s2DTXT, 8-ms_x*8, 8-ms_y*8, pApp->gl.vbo_DBG_FT_Cache, 0, 1);
+    //     }
+    //     A5GL_2DTXT_DrawSetTex(&pApp->gl.s2DTXT, pApp->gl.tex_FT_Cache, A5FT_CacheGetSize(pApp->FT_Cache));
+    //     A5GL_2DTXT_DrawVbo(&pApp->gl.s2DTXT, 8-ms_x*8, 8-ms_y*8, pApp->gl.vbo_DBG_FT_Cache, 1, 1);
+    // } else if(pApp->iDbgState == 2) {
+    //     glClearColor(0.3f,0.3f,0.3f,1.0f);
+    //     glClear(GL_COLOR_BUFFER_BIT);
+    //     A5GL_2DTXT_DrawBegin(&pApp->gl.s2DTXT, ds_w, ds_h);
+    //     A5GL_2DTXT_DrawSetTex(&pApp->gl.s2DTXT, pApp->gl.tex_FT_Cache, A5FT_CacheGetSize(pApp->FT_Cache));
 
-        A5S_TextSettings ts;
-        GLuint uCount = 0;
-        SDL_memset(&ts, 0, sizeof(A5S_TextSettings));
-        if(SDL_HasClipboardText()) {
-            ts.szText = SDL_GetClipboardText();
-            uCount = pApp->gl.vsz_DBG_CLIPBOARD;
-        } else {
-            ts.szText = SDL_malloc(32);
-            uCount = 11;
-            SDL_memcpy(ts.szText, "No Clipboard", 13);
-        }
+    //     A5S_TextSettings ts;
+    //     GLuint uCount = 0;
+    //     SDL_memset(&ts, 0, sizeof(A5S_TextSettings));
+    //     if(SDL_HasClipboardText()) {
+    //         ts.szText = SDL_GetClipboardText();
+    //         uCount = pApp->gl.vsz_DBG_CLIPBOARD;
+    //     } else {
+    //         ts.szText = SDL_malloc(32);
+    //         uCount = 11;
+    //         SDL_memcpy(ts.szText, "No Clipboard", 13);
+    //     }
 
-        ts.pCache = pApp->FT_Cache;
-        ts.iHeight = pApp->gl.hsz_DBG_CLIPBOARD;
-        ts.R = 0xef;
-        ts.G = 0xff;
-        ts.B = 0xdf;
-        ts.A = 0xff;
+    //     ts.pCache = pApp->FT_Cache;
+    //     ts.iHeight = pApp->gl.hsz_DBG_CLIPBOARD;
+    //     ts.R = 0xef;
+    //     ts.G = 0xff;
+    //     ts.B = 0xdf;
+    //     ts.A = 0xff;
 
-        GLuint strSz = A5GL_2DTXT_PrepareVboText(pApp->gl.vbo_DBG_CLIPBOARD, 0, uCount, &ts);
-        SDL_free(ts.szText);
-        A5GL_2DTXT_DrawVbo(&pApp->gl.s2DTXT, 8-ms_x*8, 8-ms_y*4+ts.iHeight, pApp->gl.vbo_DBG_CLIPBOARD, 0, strSz);
-    }
+    //     GLuint strSz = A5GL_2DTXT_PrepareVboText(pApp->gl.vbo_DBG_CLIPBOARD, 0, uCount, &ts);
+    //     SDL_free(ts.szText);
+    //     A5GL_2DTXT_DrawVbo(&pApp->gl.s2DTXT, 8-ms_x*8, 8-ms_y*4+ts.iHeight, pApp->gl.vbo_DBG_CLIPBOARD, 0, strSz);
+    // }
 
     SDL_GL_SwapWindow(pApp->SDL_wnd);
     // pApp->bAnimation = 0;

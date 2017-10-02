@@ -1,72 +1,214 @@
 #ifndef _H_A5_FT
-#define _H_A5_FT 170930
+#define _H_A5_FT 171002
 
-typedef void *A5S_FTLib;
-typedef void *A5S_FTCache;
+#include <SDL2/SDL_stdinc.h>
+#include <SDL2/SDL_log.h>
 
-typedef struct tagA5S_Glyph {
-    /* ID Глифа */
-    unsigned int    iGlyphID;
-    /* Номер символа в юникоде */
-    unsigned int    iUnicode;
-    /* Номер используемого шрифта */
-    unsigned int    iFontID;
-    /* Высота глифа */
-    unsigned int    iHeight;
-    /* Ширина глифа */
-    unsigned int    iAdvance;
-    /* Позиция в текстуре */
-    unsigned int    iTexX, iTexY;
-    /* Размеры в текстуре */
-    unsigned int    iTexW, iTexH;
-    /* Отступы для текстуры */
-    int             iOffX, iOffY;
-} A5S_Glyph, *pA5S_Glyph;
+typedef void            FTvoid,     *FTpvoid;
+typedef unsigned int    FTuint,     *FTpuint;
+typedef int             FTint,      *FTpint;
+typedef char            FTchar,     *FTpchar;
+typedef FTpchar         FTstr,      *FTpstr;
+typedef const FTstr     FTcstr,     *FTpcstr;
 
-typedef struct tagA5S_TextSettings {
-    /* Указатель на UTF-8 строку */
-    char           *szText;
-    /* Указатель на UTF-32 строку */
-    unsigned int   *szText32;
-    /* Указатель на кеш */
-    A5S_FTCache     pCache;
-    /* Номер используемого шрифта */
-    unsigned int    iFontID;
-    /* Высота глифа */
-    unsigned int    iHeight;
-    /* Максимальная иширна строки */
-    unsigned int    iWidth;
-    /* Высота строки */
-    int             iLineHeight;
-    /* кёрнинг */
-    int             iKerning;
-    /* ширина табуляция */
-    int             iTab;
-    /* Позиция в буффере */
-    int             iX, iY;
-    /* Цвета в буффере */
-    unsigned char   R, G, B, A;
-} A5S_TextSettings, *pA5S_TextSettings;
+/*A5FT*RU*A5FT_System
+    ****************************
+        Система A5FT
+    ****************************
+*/
+    typedef FTpvoid         pA5FT_Lib;
+    /*A5FT*RU*
+        Инициализация системы A5FT
+        +In:    NULL
+        +Out:   Указатель на систему A5FT (NULL - в случае ошибки)
+    */
+    pA5FT_Lib       A5FT_Init();
+    /*A5FT*RU*
+        Освобождение системы A5FT
+        +In:    +0: Указатель на систему A5FT
+        +Out:   NULL
+    */
+    FTvoid          A5FT_Free(pA5FT_Lib pLib);
 
+/*A5FT*RU*A5FT_Cache
+    ****************************
+        Кеш A5FT
+    ****************************
+*/
+    /*A5FT*RU*
+        Структура начала кеша A5FT
+        +pLib:              Указатель на систему A5FT
+        +uCacheSize:        Размер стороны кеша
+        +uMaxFonts:         Максимальное количество загруженных шрифтов
+        +uGlyphCount:       Количество глифов
+        +uPenX:             Позиция пера в кеше
+        +uPenY:             Позиция пера в кеше
+        +uLineHeight:       Высота заполняемой линии кеша
+        +uFlagUpdate:       Флаг обновления (увеличивается при каждом изменении кеша)
+        +uFlagDebug:        Флаг отладочной информации
+        +uFlagOptimize:     Флаг состояния оптимизации
+    */
+    typedef struct tagA5S_FtCacheHead {
+        FTpvoid         pLib;
+        FTuint          uCacheSize;
+        FTuint          uMaxFonts;
+        FTuint          uGlyphCount;
+        FTuint          uPenX;
+        FTuint          uPenY;
+        FTuint          uLineHeight;
+        FTuint          uFlagUpdate;
+        FTuint          uFlagDebug;
+        FTuint          uFlagOptimize;
+    } A5S_FtCacheHead, *pA5S_FtCacheHead, *pA5FT_Cache;
+    /*A5FT*RU*
+        Создание кеша под глифы (символы)
+        +In:    +0: Указатель на систему A5FT
+                +1: Размер стороны кеша
+                +2: Максимальное количество загруженных шрифтов (0 - для кастомного кеша)
+                +3: Флаг отладочной информации
+        +Out:   Указатель на кеш A5FT (NULL - в случае ошибки)
+    */
+    pA5FT_Cache     A5FT_CacheInit(pA5FT_Lib pLib, FTuint uSize, FTuint uMaxFonts, FTuint uFlagDebug);
+    /*A5FT*RU*
+        Освобождение кеша
+        +In:     +0: Указатель на кеш A5FT
+        +Out:    NULL
+    */
+    FTvoid          A5FT_CacheFree(pA5FT_Cache pCache);
+    /*A5FT*RU*
+        Полное очищение кеша (высвобождает все шрифты и глифы)
+        +In:    +0: Указатель на кеш A5FT
+        +Out:   NULL
+    */
+    FTvoid          A5FT_CacheClear(pA5FT_Cache pCache);
+    /*A5FT*RU*
+        Установление флага обновления
+        +In:    +0: Указатель на кеш A5FT
+                +1: Новое значение для флага обновления
+        +Out:   Старое значения флага обновления
+    */
+    FTuint          A5FT_CacheUpdate(pA5FT_Cache pCache, FTuint uUpdate);
 
+/*A5FT*RU*A5FT_Font
+    ****************************
+        Шрифты A5FT
+    ****************************
+*/
+    /*A5FT*RU*
+        Загрузка шрифта из файла
+        +In:    +0: Указатель на кеш A5FT
+                +1: (u8) Путь к файлу
+        +Out:   Номер шрифта в кеше (0 - в случае ошибки)
+    */
+    FTuint          A5FT_FontNewFromFile(pA5FT_Cache pCache, FTcstr szFileName);
+    /*A5FT*RU*
+        Загрузка шрифта из участка памяти
+        +In:    +0: Указатель на кеш A5FT
+                +1: Указатель на участок памяти
+                +2: Размер памяти
+        +Out:   Номер шрифта в кеше (0 - в случае ошибки)
+    */
+    FTuint          A5FT_FontNewFromMem(pA5FT_Cache pCache, FTpvoid pMem, FTuint uSize);
+    /*A5FT*RU*
+        Удаление шрифта из кеша
+        +In:    +0: Указатель на кеш A5FT
+                +1: Номер шрифта в кеше
+                +2: Размер памяти
+        +Out:   NULL
+    */
+    FTvoid          A5FT_FontDelete(pA5FT_Cache pCache, FTuint uFontID);
 
-A5S_FTLib   A5FT_Init();
-void        A5FT_Free(A5S_FTLib pLib);
-
-A5S_FTCache     A5FT_CacheInit(A5S_FTLib pLib, unsigned int uSize, unsigned int uMaxFonts);
-void            A5FT_CacheFree(A5S_FTCache pCache);
-void            A5FT_CacheClear(A5S_FTCache pCache);
-unsigned int    A5FT_CacheUpdate(A5S_FTCache pCache, unsigned int iUpdate);
-unsigned int    A5FT_CacheGetSize(A5S_FTCache pCache);
-
-unsigned int    A5FT_FontNewFromFile(A5S_FTCache pCache, const char *szFileName);
-unsigned int    A5FT_FontNewFromMem(A5S_FTCache pCache, void *pMem, unsigned int uSize);
-void            A5FT_FontDel(A5S_FTCache pCache, unsigned int iFontID);
-
-void            A5FT_GlyphClear(A5S_FTCache pCache);
-pA5S_Glyph      A5FT_GlyphNew(A5S_FTCache pCache, unsigned int iFontID, unsigned int iGlyphID, unsigned int iHeight);
-pA5S_Glyph      A5FT_GlyphGet(A5S_FTCache pCache, unsigned int iFontID, unsigned int iGlyphID, unsigned int iHeight);
-pA5S_Glyph      A5FT_CharGet(A5S_FTCache pCache, unsigned int iFontID, unsigned int iUnicode, unsigned int iHeight);
-
+/*A5FT*RU*A5FT_Font
+    ****************************
+        Глифы A5FT
+    ****************************
+*/
+    /*A5FT*RU*
+        Структура глифа A5FT
+        +uFontID:           Номер шрифта в кеше (0 - для собственного глифа)
+        +uHeight:           Высота глифа
+        +uUnicode:          Юникод глифа
+        +uGlyphID:          Номер глифа в шрифте
+        +uAdvance:          Ширина глифа
+        +uCachePosX:        Позиция в кеше
+        +uCachePosY:        Позиция в кеше
+        +uCacheWidth:       Ширина в кеше
+        +uCacheHeight:      Высота в кеше
+        +iTexOffsetX:       Отступ текстуры
+        +iTexOffsetY:       Отступ текстуры
+    */
+    typedef struct tagA5S_Glyph {
+        FTuint          uFontID;
+        FTuint          uHeight;
+        FTuint          uUnicode;
+        FTuint          uGlyphID;
+        FTuint          uAdvance;
+        FTuint          uCachePosX;
+        FTuint          uCachePosY;
+        FTuint          uCacheWidth;
+        FTuint          uCacheHeight;
+        FTint           iTexOffsetX;
+        FTint           iTexOffsetY;
+    } A5S_Glyph, *pA5S_Glyph, *pA5FT_Glyph;
+    /*A5FT*RU*
+        Сброс всех глифов
+        +In:    +0: Указатель на кеш A5FT
+                +1: Номер шрифта в кеше
+                +2: Размер памяти
+        +Out:   NULL
+    */
+    FTvoid          A5FT_GlyphClear(pA5FT_Cache pCache);
+    /*A5FT*RU*
+        Создать новый собственный глиф из участка памяти
+        +In:    +0: Указатель на кеш A5FT
+                +1: Ширина памяти
+                +2: Высота памяти
+                +3: Указатель на память
+        +Out:   Указатель на глиф (NULL - в случае ошибки)
+    */
+    pA5FT_Glyph     A5FT_GlyphNewCustom(pA5FT_Cache pCache, FTuint uBufWidth, FTuint uBufHeight, FTpvoid pBuf);
+    /*A5FT*RU*
+        Создать новый глиф по номеру глифа из загруженого шрифта
+        +In:    +0: Указатель на кеш A5FT
+                +1: Номер шрифта в кеше
+                +2: Высота глифа
+                +3: Номер глифа в шрифте
+        +Out:   Указатель на глиф (NULL - в случае ошибки)
+    */
+    pA5FT_Glyph     A5FT_GlyphNew(pA5FT_Cache pCache, FTuint uFontID, FTuint uHeight, FTuint uGlyphID);
+    /*A5FT*RU*
+        Создать новый глиф по юникоду из загруженого шрифта
+        +In:    +0: Указатель на кеш A5FT
+                +1: Номер шрифта в кеше
+                +2: Высота глифа
+                +3: Юникод глифа
+        +Out:   Указатель на глиф (NULL - в случае ошибки)
+    */
+    pA5FT_Glyph     A5FT_GlyphNewUnicode(pA5FT_Cache pCache, FTuint uFontID, FTuint uHeight, FTuint uUnicode);
+    /*A5FT*RU*
+        Найти собственный глиф
+        +In:    +0: Указатель на кеш A5FT
+                +1: Номер глифа
+        +Out:   Указатель на глиф (NULL - в случае ошибки или его отсутсвия)
+    */
+    pA5FT_Glyph     A5FT_GlyphGetCustom(pA5FT_Cache pCache, FTuint uGlyphID);
+    /*A5FT*RU*
+        Найти глиф по номеру глифа из загруженого шрифта
+        +In:    +0: Указатель на кеш A5FT
+                +1: Номер шрифта в кеше
+                +2: Высота глифа
+                +3: Номер глифа в шрифте
+        +Out:   Указатель на глиф (NULL - в случае ошибки или его отсутсвия)
+    */
+    pA5FT_Glyph     A5FT_GlyphGet(pA5FT_Cache pCache, FTuint uFontID, FTuint uHeight, FTuint uGlyphID);
+    /*A5FT*RU*
+        Найти глиф по юникоду из загруженого шрифта
+        +In:    +0: Указатель на кеш A5FT
+                +1: Номер шрифта в кеше
+                +2: Высота глифа
+                +3: Юникод глифа
+        +Out:   Указатель на глиф (NULL - в случае ошибки или его отсутсвия)
+    */
+    pA5FT_Glyph     A5FT_GlyphGetUnicode(pA5FT_Cache pCache, FTuint uFontID, FTuint uHeight, FTuint uUnicode);
 
 #endif

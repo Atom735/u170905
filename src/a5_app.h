@@ -16,9 +16,9 @@ typedef struct tagA5S_App {
     /* Последнее событие */
     SDL_Event           SDL_event;
     /* Библиотека FT */
-    A5S_FTLib           FT_Lib;
+    pA5FT_Lib           FT_Lib;
     /* Кеш FT */
-    A5S_FTCache         FT_Cache;
+    pA5FT_Cache         FT_Cache;
 
     /* Флаг работы приложения */
     int                 bRun;
@@ -36,6 +36,7 @@ typedef struct tagA5S_App {
         A5GLV_2DTXT     s2DTXT;
         GLuint          vbo_DBG_FT_Cache;
         GLuint          tex_DBG_FT_Cache;
+        GLuint          uib_DBG_FT_Cache;
         GLuint          tex_FT_Cache;
 
         GLuint          hsz_DBG_CLIPBOARD;

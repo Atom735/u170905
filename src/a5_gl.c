@@ -92,61 +92,61 @@ GLvoid A5GL_2DTXT_DrawVbo(pA5GLV_2DTXT p, GLint iPosX, GLint iPosY, GLuint uVBO,
     glDisableVertexAttribArray(p->_aTex);
     glDisableVertexAttribArray(p->_aCol);
 }
-GLuint A5GL_2DTXT_PrepareVboText(GLuint uVBO, GLuint uOffset, GLuint uCount, pA5S_TextSettings pSettings) {
+// GLuint A5GL_2DTXT_PrepareVboText(GLuint uVBO, GLuint uOffset, GLuint uCount, pA5S_TextSettings pSettings) {
 
-    glBindBuffer(GL_ARRAY_BUFFER, uVBO);
-    pA5V_2DTXT pv = SDL_stack_alloc(A5V_2DTXT, uCount*6);
-    unsigned int iChar;
-    unsigned int i=0;
-    int X = pSettings->iX;
-    int Y = pSettings->iY;
-    int dX=0;
-    const char *szText = pSettings->szText;
-    const unsigned int *szText32 = pSettings->szText32;
-    while(uCount) {
-        if(szText32) {
-            iChar = *szText32; ++szText32;
-        } else if(szText) {
-            szText = A5UT_GetUtf8(szText, &iChar);
-        } else {
-            SDL_stack_free(pv);
-            return 0;
-        }
-        if(!iChar) {
-            break;
-        }
-        if(iChar == '\n') {
-            Y+= pSettings->iHeight + pSettings->iLineHeight;
-            X = pSettings->iX;
-        }
-        if((iChar == '\t') && (pSettings->iTab)) {
-            X += pSettings->iTab - X%pSettings->iTab;
-        }
-        pA5S_Glyph pG = A5FT_CharGet(pSettings->pCache, pSettings->iFontID, iChar, pSettings->iHeight);
-        if(!pG) pG = A5FT_CharGet(pSettings->pCache, pSettings->iFontID, '?', pSettings->iHeight);
-        if(pG) {
-            if(pG->iTexW && pG->iTexH) {
-                pv[i].r = pSettings->R;     pv[i].g = pSettings->G;
-                pv[i].b = pSettings->B;     pv[i].a = pSettings->A;
-                pv[i].x = X+pG->iOffX;      pv[i].y = Y+pG->iOffY;
-                pv[i].u = pG->iTexX;        pv[i].v = pG->iTexY;
-                ++i;                        pv[i]   = pv[i-1];
-                pv[i].x+= pG->iTexW;        pv[i].u+= pG->iTexW;
-                ++i;                        pv[i]   = pv[i-2];
-                pv[i].y+= pG->iTexH;        pv[i].v+= pG->iTexH;
-                ++i;                        pv[i]   = pv[i-1];
-                ++i;                        pv[i]   = pv[i-3];
-                ++i;                        pv[i]   = pv[i-1];
-                pv[i].y+= pG->iTexH;        pv[i].v+= pG->iTexH;
-                ++i;                        --uCount;
-            }
-            X += (dX = pG->iAdvance + pSettings->iKerning);
-        }
-    }
-    glBufferSubData(GL_ARRAY_BUFFER, sizeof(A5V_2DTXT)*uOffset*6, sizeof(A5V_2DTXT)*i, pv);
-    SDL_stack_free(pv);
-    return i/6;
-}
+//     glBindBuffer(GL_ARRAY_BUFFER, uVBO);
+//     pA5V_2DTXT pv = SDL_stack_alloc(A5V_2DTXT, uCount*6);
+//     unsigned int iChar;
+//     unsigned int i=0;
+//     int X = pSettings->iX;
+//     int Y = pSettings->iY;
+//     int dX=0;
+//     const char *szText = pSettings->szText;
+//     const unsigned int *szText32 = pSettings->szText32;
+//     while(uCount) {
+//         if(szText32) {
+//             iChar = *szText32; ++szText32;
+//         } else if(szText) {
+//             szText = A5UT_GetUtf8(szText, &iChar);
+//         } else {
+//             SDL_stack_free(pv);
+//             return 0;
+//         }
+//         if(!iChar) {
+//             break;
+//         }
+//         if(iChar == '\n') {
+//             Y+= pSettings->iHeight + pSettings->iLineHeight;
+//             X = pSettings->iX;
+//         }
+//         if((iChar == '\t') && (pSettings->iTab)) {
+//             X += pSettings->iTab - X%pSettings->iTab;
+//         }
+//         pA5S_Glyph pG = A5FT_CharGet(pSettings->pCache, pSettings->iFontID, iChar, pSettings->iHeight);
+//         if(!pG) pG = A5FT_CharGet(pSettings->pCache, pSettings->iFontID, '?', pSettings->iHeight);
+//         if(pG) {
+//             if(pG->iTexW && pG->iTexH) {
+//                 pv[i].r = pSettings->R;     pv[i].g = pSettings->G;
+//                 pv[i].b = pSettings->B;     pv[i].a = pSettings->A;
+//                 pv[i].x = X+pG->iOffX;      pv[i].y = Y+pG->iOffY;
+//                 pv[i].u = pG->iTexX;        pv[i].v = pG->iTexY;
+//                 ++i;                        pv[i]   = pv[i-1];
+//                 pv[i].x+= pG->iTexW;        pv[i].u+= pG->iTexW;
+//                 ++i;                        pv[i]   = pv[i-2];
+//                 pv[i].y+= pG->iTexH;        pv[i].v+= pG->iTexH;
+//                 ++i;                        pv[i]   = pv[i-1];
+//                 ++i;                        pv[i]   = pv[i-3];
+//                 ++i;                        pv[i]   = pv[i-1];
+//                 pv[i].y+= pG->iTexH;        pv[i].v+= pG->iTexH;
+//                 ++i;                        --uCount;
+//             }
+//             X += (dX = pG->iAdvance + pSettings->iKerning);
+//         }
+//     }
+//     glBufferSubData(GL_ARRAY_BUFFER, sizeof(A5V_2DTXT)*uOffset*6, sizeof(A5V_2DTXT)*i, pv);
+//     SDL_stack_free(pv);
+//     return i/6;
+// }
 
 
 

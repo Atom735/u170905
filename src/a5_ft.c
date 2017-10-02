@@ -1,9 +1,27 @@
-#include "a5_app.h"
 #include "a5_ft.h"
 
 #include <ft2build.h>
 #include FT_FREETYPE_H
 #include "a5_ut.h"
+
+#define FT_LOG_CATEGORY         SDL_LOG_CATEGORY_APPLICATION
+#define FT_LOG_Debug(a, ...)    SDL_LogDebug(FT_LOG_CATEGORY, "%24s: " a, __func__, __VA_ARGS__)
+#define FT_LOG_Error(a, ...)    SDL_LogError(FT_LOG_CATEGORY, "%24s: " a, __func__, __VA_ARGS__)
+
+pA5FT_Lib       A5FT_Init() {
+    FT_Library pLib;
+    FT_Init_FreeType(&pLib);
+    if(pLib)    FT_LOG_Debug("FT_Lib = %p", pLib);
+    else        FT_LOG_Error("%s", "can't create FT_Lib");
+    return pLib;
+}
+
+FTvoid          A5FT_Free(pA5FT_Lib pLib) {
+    FT_LOG_Debug("FT_Lib = %p", pLib);
+    FT_Done_FreeType(pLib);
+}
+
+/*
 
 A5S_FTLib   A5FT_Init() {
     FT_Library pLib;
@@ -16,23 +34,6 @@ void        A5FT_Free(A5S_FTLib pLib) {
     SDL_LogDebug(SDL_LOG_CATEGORY_APPLICATION, "FT Del      : FT_Lib = %p", pLib);
     FT_Done_FreeType(pLib);
 }
-
-typedef struct tagA5S_FtCacheHead {
-    /* FT Библиотека */
-    FT_Library      pLib;
-    /* Размер кеша */
-    unsigned int    uSize;
-    /* Максимальное количество шрифтов */
-    unsigned int    uMaxFonts;
-    /* Количество глифов */
-    unsigned int    uGlyphCount;
-    /* Позиция кисти */
-    unsigned int    uX, uY;
-    /* Высота заполняемой линии */
-    unsigned int    uH;
-    /* Флаг обновления */
-    unsigned int    uUpdate;
-} A5S_FtCacheHead, *pA5S_FtCacheHead;
 
 A5S_FTCache     A5FT_CacheInit(A5S_FTLib pLib, unsigned int uSize, unsigned int uMaxFonts) {
     pA5S_FtCacheHead pHead = (pA5S_FtCacheHead)SDL_malloc(uSize*uSize*2);
@@ -235,3 +236,5 @@ pA5S_Glyph      A5FT_CharGet(A5S_FTCache pCache, unsigned int iFontID, unsigned 
     if(pa5g) pa5g->iUnicode = iUnicode;
     return pa5g;
 }
+
+*/
