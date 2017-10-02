@@ -1,7 +1,7 @@
 #include "a5_app.h"
 #include "a5_ut.h"
 
-Uint8* A5UT_FileRead(const char *szFileName, int *pSize) {
+Uint8* A5UT_FileRead(const char *szFileName, unsigned int *pSize) {
     SDL_RWops *rw = SDL_RWFromFile(szFileName, "rb");
     if(!rw) return NULL;
     Sint64 res_size = SDL_RWsize(rw);

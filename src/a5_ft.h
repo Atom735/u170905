@@ -45,10 +45,9 @@ typedef const FTstr     FTcstr,     *FTpcstr;
         +uPenY:             Позиция пера в кеше
         +uLineHeight:       Высота заполняемой линии кеша
         +uFlagUpdate:       Флаг обновления (увеличивается при каждом изменении кеша)
-        +uFlagDebug:        Флаг отладочной информации
         +uFlagOptimize:     Флаг состояния оптимизации
     */
-    typedef struct tagA5S_FtCacheHead {
+    typedef struct tagA5S_FT_Cache {
         FTpvoid         pLib;
         FTuint          uCacheSize;
         FTuint          uMaxFonts;
@@ -57,18 +56,16 @@ typedef const FTstr     FTcstr,     *FTpcstr;
         FTuint          uPenY;
         FTuint          uLineHeight;
         FTuint          uFlagUpdate;
-        FTuint          uFlagDebug;
         FTuint          uFlagOptimize;
-    } A5S_FtCacheHead, *pA5S_FtCacheHead, *pA5FT_Cache;
+    } *pA5FT_Cache;
     /*A5FT*RU*
         Создание кеша под глифы (символы)
         +In:    +0: Указатель на систему A5FT
                 +1: Размер стороны кеша
                 +2: Максимальное количество загруженных шрифтов (0 - для кастомного кеша)
-                +3: Флаг отладочной информации
         +Out:   Указатель на кеш A5FT (NULL - в случае ошибки)
     */
-    pA5FT_Cache     A5FT_CacheInit(pA5FT_Lib pLib, FTuint uSize, FTuint uMaxFonts, FTuint uFlagDebug);
+    pA5FT_Cache     A5FT_CacheInit(pA5FT_Lib pLib, FTuint uSize, FTuint uMaxFonts);
     /*A5FT*RU*
         Освобождение кеша
         +In:     +0: Указатель на кеш A5FT
@@ -82,12 +79,20 @@ typedef const FTstr     FTcstr,     *FTpcstr;
     */
     FTvoid          A5FT_CacheClear(pA5FT_Cache pCache);
     /*A5FT*RU*
-        Установление флага обновления
+        Оптимизация кеша A5FT
         +In:    +0: Указатель на кеш A5FT
-                +1: Новое значение для флага обновления
-        +Out:   Старое значения флага обновления
+                +1: Степень оптимизации
+        +Out:   NULL
     */
-    FTuint          A5FT_CacheUpdate(pA5FT_Cache pCache, FTuint uUpdate);
+    FTvoid          A5FT_CacheOptimize(pA5FT_Cache pCache, FTuint uFlagOptimize);
+    /*A5FT*RU*
+        Получть дебаг кеш кеша A5FT
+        +In:    +0: Указатель на кеш A5FT
+                +1: Тип отладочной информации
+                +2: Указатель на пустой массив размера кеша куда запишем данные
+        +Out:   Указатель на заполненый массив который получили в аргументе
+    */
+    FTpvoid         A5FT_CacheDebugGet(pA5FT_Cache pCache, FTuint uFlagDebug, FTpvoid pBuf);
 
 /*A5FT*RU*A5FT_Font
     ****************************
@@ -137,7 +142,7 @@ typedef const FTstr     FTcstr,     *FTpcstr;
         +iTexOffsetX:       Отступ текстуры
         +iTexOffsetY:       Отступ текстуры
     */
-    typedef struct tagA5S_Glyph {
+    typedef struct tagA5S_FT_Glyph {
         FTuint          uFontID;
         FTuint          uHeight;
         FTuint          uUnicode;
@@ -149,24 +154,23 @@ typedef const FTstr     FTcstr,     *FTpcstr;
         FTuint          uCacheHeight;
         FTint           iTexOffsetX;
         FTint           iTexOffsetY;
-    } A5S_Glyph, *pA5S_Glyph, *pA5FT_Glyph;
+    } *pA5FT_Glyph;
     /*A5FT*RU*
         Сброс всех глифов
         +In:    +0: Указатель на кеш A5FT
-                +1: Номер шрифта в кеше
-                +2: Размер памяти
         +Out:   NULL
     */
     FTvoid          A5FT_GlyphClear(pA5FT_Cache pCache);
     /*A5FT*RU*
         Создать новый собственный глиф из участка памяти
         +In:    +0: Указатель на кеш A5FT
-                +1: Ширина памяти
-                +2: Высота памяти
+                +1: Ширина данных в памяти
+                +2: Высота данных в памяти
                 +3: Указатель на память
+                +4: Ширина самой памяти
         +Out:   Указатель на глиф (NULL - в случае ошибки)
     */
-    pA5FT_Glyph     A5FT_GlyphNewCustom(pA5FT_Cache pCache, FTuint uBufWidth, FTuint uBufHeight, FTpvoid pBuf);
+    pA5FT_Glyph     A5FT_GlyphNewCustom(pA5FT_Cache pCache, FTuint uBufWidth, FTuint uBufHeight, FTpvoid pBuf, FTuint uBufPitch);
     /*A5FT*RU*
         Создать новый глиф по номеру глифа из загруженого шрифта
         +In:    +0: Указатель на кеш A5FT
