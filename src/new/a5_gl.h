@@ -2,12 +2,15 @@
 #define _H_A5_GL 171007
 
 #include "a5_types.h"
+#include "a5_ft.h"
 
 #include <GL/gl.h>
 #include <GL/glext.h>
 
 A5TYPEDEF(struct A5sv_2DTXT,     sv_2DTXT);
 A5TYPEDEF(struct A5sGL_2DTXT,    sGL_2DTXT);
+
+A5TYPEDEF(struct A5sSETTINGS_TXT,   sSETTINGS_TXT);
 
 A5uint A5GL_Init();
 
@@ -31,13 +34,31 @@ struct A5sGL_2DTXT {
             _uPos, _uMat, _uTex, _uTsz;
 };
 
+struct A5sSETTINGS_TXT {
+    A5pcstr         pzTxt;
+    A5psFT_Cache    pCache;
+    A5uint          uSizeID;
+    A5short         iHeight,iKerning;
+    A5short         iPosX, iPosY;
+    union {
+        GLuint c;
+        struct {
+            GLubyte r, g, b, a;
+        };
+    };
+
+};
+
 GLvoid A5GL_2DTXT_Init(A5psGL_2DTXT p);
 GLvoid A5GL_2DTXT_Free(A5psGL_2DTXT p);
 GLuint A5GL_2DTXT_CreateVBO_Dynamic(GLuint uSize);
 GLuint A5GL_2DTXT_CreateVBO_Static(GLuint uSize, A5psv_2DTXT pBuf);
 GLvoid A5GL_2DTXT_DrawBegin(A5psGL_2DTXT p, GLuint uScreenWidth, GLuint uScreenHeight);
 GLvoid A5GL_2DTXT_DrawSetTexture(A5psGL_2DTXT p, GLuint uTex, GLuint uTexSize);
-GLvoid A5GL_2DTXT_DrawVBO(A5psGL_2DTXT p, GLint iPosX, GLint iPosY, GLuint uVBO, GLuint uOffset, GLuint uCount);
+GLvoid A5GL_2DTXT_DrawSetPos(A5psGL_2DTXT p, GLint iPosX, GLint iPosY);
+GLvoid A5GL_2DTXT_DrawVBO(A5psGL_2DTXT p, GLuint uVBO, GLuint uOffset, GLuint uCount);
+
+GLuint A5GL_2DTXT_PrepareVboText(GLuint uVBO, GLuint uOffset, GLuint uCount, A5psSETTINGS_TXT pSettings);
 
 
 

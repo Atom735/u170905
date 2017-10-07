@@ -32,6 +32,7 @@ struct A5sApp {
 
     A5sGL_2DTXT         gls_2DTXT;
     GLuint              glu_VBO_2DTXT_DBG;
+    GLuint              glu_VBO_TEXT;
     GLuint              glu_TEX_2DTXT_DBG;
 };
 

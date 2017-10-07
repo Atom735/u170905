@@ -199,6 +199,7 @@ A5uint  A5APP_ResInit(A5psApp pApp) {
         };
         pApp->glu_VBO_2DTXT_DBG = A5GL_2DTXT_CreateVBO_Static(2, pBuf);
         glGenTextures(1, &pApp->glu_TEX_2DTXT_DBG);
+        pApp->glu_VBO_TEXT = A5GL_2DTXT_CreateVBO_Dynamic(4096);
     }
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
@@ -208,6 +209,7 @@ A5void  A5APP_ResFree(A5psApp pApp) {
     glBindBuffer(GL_ARRAY_BUFFER, 0);
     glUseProgram(0);
 
+    glDeleteBuffers (1, &pApp->glu_VBO_TEXT);
     glDeleteBuffers (1, &pApp->glu_VBO_2DTXT_DBG);
     glDeleteTextures(1, &pApp->glu_TEX_2DTXT_DBG);
 
@@ -237,7 +239,20 @@ A5void  A5APP_Idle(A5psApp pApp) {
     SDL_GL_GetDrawableSize(pApp->SDL_Window, &ds_w, &ds_h);
     A5int ms_x, ms_y;
     SDL_GetMouseState(&ms_x, &ms_y);
+    static Uint64 u64_OldCounter = 0;
+    static Uint64 u64_NewCounter = 0;
+    static A5uint uCounts = 0;
 
+    float FF=0.f;
+    float FPS=0.f;
+
+    A5uint Freq;
+    Freq = (A5uint)SDL_GetPerformanceFrequency();
+    uCounts = (A5uint)(u64_NewCounter-u64_OldCounter);
+    FF = (float)uCounts / (float)Freq;
+    if(uCounts) FPS = (float)Freq / (float)uCounts;
+
+    u64_OldCounter = SDL_GetPerformanceCounter();
 
     glClearColor(0.3f,0.3f,0.3f,1.0f);
     glClear(GL_COLOR_BUFFER_BIT);
@@ -247,8 +262,34 @@ A5void  A5APP_Idle(A5psApp pApp) {
 
     A5GL_2DTXT_DrawBegin(&pApp->gls_2DTXT, ds_w, ds_h);
     A5GL_2DTXT_DrawSetTexture(&pApp->gls_2DTXT, pApp->glu_TEX_2DTXT_DBG, 2048);
-    A5GL_2DTXT_DrawVBO(&pApp->gls_2DTXT, 8-ms_x*8, 8-ms_y*8, pApp->glu_VBO_2DTXT_DBG, 1, 1);
+    A5GL_2DTXT_DrawSetPos(32-ms_x*8, 32-ms_y*8)
+    A5GL_2DTXT_DrawVBO(&pApp->gls_2DTXT, pApp->glu_VBO_2DTXT_DBG, 0, 1);
+
+    A5sSETTINGS_TXT Settings;
+    A5char str[1024];
+    Settings.pzTxt = str;
+    Settings.pCache = pApp->FT_Cache;
+    Settings.uSizeID = 1;
+    Settings.iHeight = 18;
+    Settings.iKerning = 0;
+    Settings.iPosX = 512;
+    Settings.iPosY = 512;
+    Settings.r = SDL_GetTicks();
+    Settings.g = SDL_GetTicks()*2;
+    Settings.b = SDL_GetTicks()*3;
+    Settings.a = 0x7f;
+
+
+    SDL_snprintf(str, 1024, u8"Количество тиков со старта: [%u]\nВремя последнего кадра: [%.5f]\nFPS: [%.5f]", SDL_GetTicks(), FF, FPS);
+
+    GLuint txtSz = 0;
+    txtSz += A5GL_2DTXT_PrepareVboText(pApp->glu_VBO_TEXT, txtSz, 4096-txtSz, &Settings);
+
+
+    A5GL_2DTXT_DrawVBO(&pApp->gls_2DTXT, pApp->glu_VBO_TEXT, 0, 1);
 
     SDL_GL_SwapWindow(pApp->SDL_Window);
+
+    u64_NewCounter = SDL_GetPerformanceCounter();
 }
 

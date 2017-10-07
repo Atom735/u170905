@@ -114,8 +114,10 @@ GLvoid A5GL_2DTXT_DrawSetTexture(A5psGL_2DTXT p, GLuint uTex, GLuint uTexSize) {
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
     glUniform2f(p->_uTsz, 1.0f/(GLfloat)uTexSize, 1.0f/(GLfloat)uTexSize);
 }
-GLvoid A5GL_2DTXT_DrawVBO(A5psGL_2DTXT p, GLint iPosX, GLint iPosY, GLuint uVBO, GLuint uOffset, GLuint uCount) {
+GLvoid A5GL_2DTXT_DrawSetPos(A5psGL_2DTXT p, GLint iPosX, GLint iPosY) {
     glUniform2f(p->_uPos, (GLfloat)iPosX, (GLfloat)iPosY);
+}
+GLvoid A5GL_2DTXT_DrawVBO(A5psGL_2DTXT p, GLuint uVBO, GLuint uOffset, GLuint uCount) {
     glBindBuffer(GL_ARRAY_BUFFER, uVBO);
     glEnableVertexAttribArray(p->_aPos);
     glEnableVertexAttribArray(p->_aTex);
@@ -127,6 +129,46 @@ GLvoid A5GL_2DTXT_DrawVBO(A5psGL_2DTXT p, GLint iPosX, GLint iPosY, GLuint uVBO,
     glDisableVertexAttribArray(p->_aPos);
     glDisableVertexAttribArray(p->_aTex);
     glDisableVertexAttribArray(p->_aCol);
+}
+GLuint A5GL_2DTXT_PrepareVboText(GLuint uVBO, GLuint uOffset, GLuint uCount, A5psSETTINGS_TXT pSettings) {
+    glBindBuffer(GL_ARRAY_BUFFER, uVBO);
+    A5uint i = 0;
+    A5short X = pSettings->iPosX;
+    A5short Y = pSettings->iPosY;
+    A5psv_2DTXT pv = SDL_stack_alloc(A5V_2DTXT, uCount*6);
+    A5pcstr pStr = pzTxt;
+    A5uint  uUnicode;
+    while(uCount) {
+        pStr = A5UT_U8_GetUnicode(pStr, &uUnicode);
+        if(!uUnicode) break;
+        if(uUnicode == '\n') {
+            Y+= pSettings->iHeight;
+            X = pSettings->iPosX;
+            continue;
+        }
+        A5psFT_Glyph pG = A5FT_GlyphGet(pSettings->pCache, pSettings->uSizeID, uUnicode);
+        if(!pG) pG = A5FT_GlyphNew(pSettings->pCache, pSettings->uSizeID, uUnicode);
+        if(!pG) continue;
+
+        if(pG->uCacheWidth && pG->uCacheHeight) {
+            pv[i].c = pSettings->c;
+            pv[i].x = X+pG->iOffsetX;       pv[i].y = Y+pG->iOffsetY;
+            pv[i].u = pG->uCachePosX;       pv[i].v = pG->uCachePosY;
+            ++i;                            pv[i]   = pv[i-1];
+            pv[i].x+= pG->uCacheWidth;      pv[i].u+= pG->uCacheWidth;
+            ++i;                            pv[i]   = pv[i-2];
+            pv[i].y+= pG->uCacheHeight;     pv[i].v+= pG->uCacheHeight;
+            ++i;                            pv[i]   = pv[i-1];
+            ++i;                            pv[i]   = pv[i-3];
+            ++i;                            pv[i]   = pv[i-1];
+            pv[i].y+= pG->uCacheHeight;     pv[i].v+= pG->uCacheHeight;
+            ++i;                            --uCount;
+        }
+        X += pG->uAdvance + pSettings->iKerning;
+    }
+    glBufferSubData(GL_ARRAY_BUFFER, sizeof(A5sv_2DTXT)*uOffset*6, sizeof(A5sv_2DTXT)*i, pv);
+    SDL_stack_free(pv);
+    return i/6;
 }
 
 
