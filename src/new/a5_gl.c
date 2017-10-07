@@ -135,8 +135,8 @@ GLuint A5GL_2DTXT_PrepareVboText(GLuint uVBO, GLuint uOffset, GLuint uCount, A5p
     A5uint i = 0;
     A5short X = pSettings->iPosX;
     A5short Y = pSettings->iPosY;
-    A5psv_2DTXT pv = SDL_stack_alloc(A5V_2DTXT, uCount*6);
-    A5pcstr pStr = pzTxt;
+    A5psv_2DTXT pv = SDL_stack_alloc(A5sv_2DTXT, uCount*6);
+    A5pcstr pStr = pSettings->pzTxt;
     A5uint  uUnicode;
     while(uCount) {
         pStr = A5UT_U8_GetUnicode(pStr, &uUnicode);

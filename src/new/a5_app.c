@@ -257,36 +257,44 @@ A5void  A5APP_Idle(A5psApp pApp) {
     glClearColor(0.3f,0.3f,0.3f,1.0f);
     glClear(GL_COLOR_BUFFER_BIT);
 
-    glBindTexture(GL_TEXTURE_2D, pApp->glu_TEX_2DTXT_DBG);
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RED, 1024, 1024, 0, GL_RED, GL_UNSIGNED_BYTE, pApp->FT_Cache);
+    if(pApp->FT_Cache->uFlagUpdate) {
+        glBindTexture(GL_TEXTURE_2D, pApp->glu_TEX_2DTXT_DBG);
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RED, 1024, 1024, 0, GL_RED, GL_UNSIGNED_BYTE, pApp->FT_Cache);
+        pApp->FT_Cache->uFlagUpdate = 0;
+    }
 
     A5GL_2DTXT_DrawBegin(&pApp->gls_2DTXT, ds_w, ds_h);
     A5GL_2DTXT_DrawSetTexture(&pApp->gls_2DTXT, pApp->glu_TEX_2DTXT_DBG, 2048);
-    A5GL_2DTXT_DrawSetPos(32-ms_x*8, 32-ms_y*8)
+    A5GL_2DTXT_DrawSetPos(&pApp->gls_2DTXT, 32-ms_x*8, 32-ms_y*8);
     A5GL_2DTXT_DrawVBO(&pApp->gls_2DTXT, pApp->glu_VBO_2DTXT_DBG, 0, 1);
 
     A5sSETTINGS_TXT Settings;
-    A5char str[1024];
+    char str[4096];
     Settings.pzTxt = str;
     Settings.pCache = pApp->FT_Cache;
     Settings.uSizeID = 1;
     Settings.iHeight = 18;
     Settings.iKerning = 0;
     Settings.iPosX = 512;
-    Settings.iPosY = 512;
-    Settings.r = SDL_GetTicks();
-    Settings.g = SDL_GetTicks()*2;
-    Settings.b = SDL_GetTicks()*3;
+    Settings.iPosY = 256;
+    Settings.r = 0xff;
+    Settings.g = 0xff;
+    Settings.b = 0xff;
     Settings.a = 0x7f;
 
+    char *pCB = SDL_GetClipboardText();
 
-    SDL_snprintf(str, 1024, u8"Количество тиков со старта: [%u]\nВремя последнего кадра: [%.5f]\nFPS: [%.5f]", SDL_GetTicks(), FF, FPS);
+    SDL_snprintf(str, 4096, u8"Количество тиков со старта: [%u]\nВремя последнего кадра: [%.5f]\nFPS: [%.5f]\nА тут твой буффер обмена:\n%s", SDL_GetTicks(), FF, FPS, pCB);
+
+    if(pCB) SDL_free(pCB);
 
     GLuint txtSz = 0;
     txtSz += A5GL_2DTXT_PrepareVboText(pApp->glu_VBO_TEXT, txtSz, 4096-txtSz, &Settings);
 
 
-    A5GL_2DTXT_DrawVBO(&pApp->gls_2DTXT, pApp->glu_VBO_TEXT, 0, 1);
+    A5GL_2DTXT_DrawSetPos(&pApp->gls_2DTXT, 32-ms_x*2, 32-ms_y*2);
+    A5GL_2DTXT_DrawSetTexture(&pApp->gls_2DTXT, pApp->glu_TEX_2DTXT_DBG, 1024);
+    A5GL_2DTXT_DrawVBO(&pApp->gls_2DTXT, pApp->glu_VBO_TEXT, 0, txtSz);
 
     SDL_GL_SwapWindow(pApp->SDL_Window);
 
